@@ -42,15 +42,20 @@ function create(data) {
     .setCardXSpacing(250)
     .setCardYSpacing(150)
 
+  const displayName = (d) => {
+    const legalName = [d.data['first name'], d.data['middle name'], d.data['last name']].filter(Boolean).join(' ')
+    return d.data['common name'] ? `${legalName} (${d.data['common name']})` : legalName
+  }
+
   const f3Card = f3Chart.setCard(f3.CardHtml)
-    .setCardDisplay([["first name", "middle name", "last name"], ["birthday"]])
+    .setCardDisplay([displayName, ["birthday"]])
 
   const f3EditTree = f3Chart.editTree()
-    .setFields(["first name", "middle name", "last name", "birthday", "avatar"])
+    .setFields(["first name", "middle name", "last name", "common name", "birthday", "avatar"])
     .setEditFirst(true)  // clicking a card opens its edit form directly, rather than an info-only view first
     .setCardClickOpen(f3Card)
     .setLinkExistingRelConfig({  // lets an "Add Father/Mother/Spouse/Son/Daughter" pick an existing person instead of only creating a new one
-      linkRelLabel: (d) => `${d.data['first name'] || ''} ${d.data['middle name'] || ''} ${d.data['last name'] || ''}`.replace(/\s+/g, ' ').trim() || '(no name)',
+      linkRelLabel: (d) => displayName(d) || '(no name)',
       title: 'Link to existing person',
       select_placeholder: 'Select a person',
     })
