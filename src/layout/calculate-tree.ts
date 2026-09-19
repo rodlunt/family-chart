@@ -263,21 +263,24 @@ export default function calculateTree(data: Data, {
    * are related in the data but outside the library's ego-centric main-person traversal.
    */
   function placeUnconnected(tree:TreeDatum[], data_stash:Data, node_separation:number, level_separation:number, main_id:string) {
-    const displayed_ids = new Set(tree.map(d => d.data.id))
-    const confirmed_reachable_ids = getReachableIds(main_id, data_stash)
-    const supplemental_ids = new Set(data_stash.filter(d => !displayed_ids.has(d.id)).map(d => d.id))
-    const components:Data[] = []
-    const visited = new Set<string>()
+    const displayed_ids = new Set(tree.map(d => d.data.id))  // everyone already rendered in main's ego-centric window
+    const confirmed_reachable_ids = getReachableIds(main_id, data_stash)  // everyone genuinely linked to main by real (not just unconfirmed) rels, anywhere in the data
+    const supplemental_ids = new Set(data_stash.filter(d => !displayed_ids.has(d.id)).map(d => d.id))  // everyone not already on screen, confirmed-connected or not
+    const components:Data[] = []  // each entry is one connected group of supplemental people, laid out as its own mini-tree
+    const visited = new Set<string>()  // ids already assigned to a component, so no one is placed twice
 
     data_stash.filter(d => supplemental_ids.has(d.id) && !d.to_add).forEach(seed => {
-      if (visited.has(seed.id)) return
-      const component_ids = getReachableWithin(seed.id, supplemental_ids)
+      if (visited.has(seed.id)) return  // already grouped via an earlier seed in this same component
+      const component_ids = getReachableWithin(seed.id, supplemental_ids)  // this seed's whole connected group, restricted to other supplemental people
       const component = data_stash.filter(d => component_ids.has(d.id))
       component.forEach(d => visited.add(d.id))
       components.push(component)
     })
-    if (!components.length) return
+    if (!components.length) return  // nothing supplemental to place, don't touch tree/dim
 
+    // BFS restricted to `allowed`, so a supplemental person's component never pulls in
+    // someone already displayed in the main hierarchy (that person gets a full graph
+    // walk of their own via getReachableIds, not a component here).
     function getReachableWithin(start_id:string, allowed:Set<string>) {
       const found = new Set<string>()
       const queue = [start_id]
@@ -293,20 +296,45 @@ export default function calculateTree(data: Data, {
       return found
     }
 
+    // Every relation kind checked when looking for a reason to anchor a component to the displayed tree.
+    const REL_KINDS = ["parents", "spouses", "children"] as const
+    type RelKind = typeof REL_KINDS[number]
+    type Anchor = {person_id:string, relative_id:string, kind:RelKind}
+
+    // Finds the first relation (of the given rels map) from someone in `component` to someone
+    // already displayed. Written as a plain loop rather than component.flatMap(...) because a
+    // readonly tuple's .flatMap isn't recognised under this project's `target: es2015`
+    // tsconfig (same root cause as the pre-existing `.includes()` warnings elsewhere in this
+    // file) - a loop sidesteps that entirely instead of just tolerating another warning.
+    function findAnchor(component:Data, getRels:(person:Datum) => Partial<Record<RelKind, string[]>>):Anchor | undefined {
+      for (const person of component) {
+        const relations = getRels(person)
+        for (const kind of REL_KINDS) {
+          for (const relative_id of relations[kind] || []) {
+            if (displayed_ids.has(relative_id)) return {person_id: person.id, relative_id, kind}
+          }
+        }
+      }
+      return undefined
+    }
+
     const component_layouts = components.map(component => {
-      const component_ids = new Set(component.map(d => d.id))
+      const component_ids = new Set(component.map(d => d.id))  // ids belonging to this one component only
       const layout_component = component.map(d => ({
         ...d,
         data: {...d.data},
         rels: {
+          // drop any rels pointing outside this component (into another mini-tree or the
+          // main hierarchy) so the nested calculateTree call below only ever sees a single,
+          // fully self-contained family to lay out
           parents: (d.rels.parents || []).filter(id => component_ids.has(id)),
           spouses: (d.rels.spouses || []).filter(id => component_ids.has(id)),
           children: (d.rels.children || []).filter(id => component_ids.has(id)),
         },
       })) as Data  // isolate layout from relatives represented in another mini-tree or the focused hierarchy
-      const real_people = layout_component.filter(d => !d.to_add)
-      const roots = real_people.filter(d => !(d.rels.parents || []).some(id => component_ids.has(id)))
-      const root = roots.sort((a, b) => (b.rels.children || []).length - (a.rels.children || []).length)[0] || real_people[0]
+      const real_people = layout_component.filter(d => !d.to_add)  // exclude the library's own auto-generated spouse placeholders from root selection
+      const roots = real_people.filter(d => !(d.rels.parents || []).some(id => component_ids.has(id)))  // people with no parent inside this component are candidate roots
+      const root = roots.sort((a, b) => (b.rels.children || []).length - (a.rels.children || []).length)[0] || real_people[0]  // prefer whoever has the most children, so the component reads top-down
       const component_tree = calculateTree(layout_component, {
         main_id: root.id,
         node_separation,
@@ -318,32 +346,19 @@ export default function calculateTree(data: Data, {
         private_cards_config,
         duplicate_branch_toggle,
         on_toggle_one_close_others,
-        show_unconnected: false,
+        show_unconnected: false,  // this nested call lays out exactly this one component; it must not recurse into placing ITS OWN unconnected people
       }).data
 
       component_tree.forEach(d => {
         d.data = data_stash.find(original => original.id === d.data.id) || d.data  // editing must target the real store record, not the isolated layout clone
-        d.floating = !confirmed_reachable_ids.has(d.data.id)
+        d.floating = !confirmed_reachable_ids.has(d.data.id)  // provisional; cleared below if this whole component turns out to be anchored
       })
-      const x_extent = d3.extent(component_tree, d => d.x) as [number, number]
-      const y_extent = d3.extent(component_tree, d => d.y) as [number, number]
-      const confirmed_anchor = component.flatMap(person =>
-        (["parents", "spouses", "children"] as const).flatMap(kind =>
-          (person.rels[kind] || [])
-            .filter(relative_id => displayed_ids.has(relative_id))
-            .map(relative_id => ({person_id: person.id, relative_id, kind}))
-        )
-      )[0]
-      const unconfirmed_anchor = component.flatMap(person => {
-        const relations = person.unconfirmed_rels || {}
-        return (["parents", "spouses", "children"] as const).flatMap(kind =>
-          (relations[kind] || [])
-            .filter(relative_id => displayed_ids.has(relative_id))
-            .map(relative_id => ({person_id: person.id, relative_id, kind}))
-        )
-      })[0]
-      const anchor = confirmed_anchor || unconfirmed_anchor
-      if (anchor) component_tree.forEach(d => d.floating = false)
+      const x_extent = d3.extent(component_tree, d => d.x) as [number, number]  // this component's own [min x, max x], before it's shifted into place
+      const y_extent = d3.extent(component_tree, d => d.y) as [number, number]  // this component's own [min y, max y], before it's shifted into place
+      // A confirmed rels link to the displayed tree takes priority over a merely-suspected one:
+      // if both exist, anchor on the relationship we actually believe.
+      const anchor = findAnchor(component, (person) => person.rels) || findAnchor(component, (person) => person.unconfirmed_rels || {})
+      if (anchor) component_tree.forEach(d => d.floating = false)  // anchored means genuinely placed next to a real relative, not merely floating nearby
       return {
         nodes: component_tree,
         min_x: x_extent[0],
@@ -354,58 +369,88 @@ export default function calculateTree(data: Data, {
       }
     })
 
-    const main_x = d3.extent(tree, d => d.x) as [number, number]
-    const main_y = d3.extent(tree, d => d.y) as [number, number]
-    const main_width = main_x[1] - main_x[0] + node_separation
-    const total_area = component_layouts.reduce((sum, component) => sum + component.width * component.height, 0)
-    const widest_component = Math.max(...component_layouts.map(component => component.width))
-    const row_width = Math.max(main_width, widest_component, Math.sqrt(total_area) * 1.5)
-    const gap_x = node_separation * .5
-    const gap_y = level_separation
-    let cursor_x = main_x[0]
-    let cursor_y = main_y[1] + gap_y
-    let row_height = 0
+    const anchored_components = component_layouts.filter(component => component.anchor)  // has a real (confirmed or unconfirmed) link to someone displayed
+    const unanchored_components = component_layouts.filter(component => !component.anchor)  // genuinely floating, no known relationship to the displayed tree at all
 
-    component_layouts.forEach(component => {
-      if (cursor_x > main_x[0] && cursor_x + component.width > main_x[0] + row_width) {
-        cursor_x = main_x[0]
+    // Place connected collateral branches first. Align each branch with its relationship anchor,
+    // then move the complete branch sideways until every generation in its footprint is clear.
+    anchored_components.forEach(component => {
+      const anchored_node = component.nodes.find(d => d.data.id === component.anchor!.person_id)  // the component's own person named in the anchor
+      const related_node = tree.find(d => d.data.id === component.anchor!.relative_id)  // their counterpart, already placed in the displayed tree
+      if (!anchored_node || !related_node) return  // shouldn't happen given how anchor was found, but never place against a node that isn't actually there
+      const direction = component.anchor!.kind === "parents" ? 1 : component.anchor!.kind === "children" ? -1 : 0  // parents render above (+1 generation), children below (-1), spouses level (0)
+      const base_dx = is_horizontal
+        ? related_node.x + direction * level_separation - anchored_node.x
+        : related_node.x - anchored_node.x  // vertical layout: align horizontally with the related node
+      const dy = is_horizontal
+        ? related_node.y - anchored_node.y  // horizontal layout: align vertically with the related node
+        : related_node.y + direction * level_separation - anchored_node.y
+      const dx = nearestCollisionFreeShift(component.nodes, base_dx, dy)  // base_dx is the ideal alignment; nudge sideways only as far as needed to clear a collision
+      appendShifted(component.nodes, dx, dy)
+    })
+
+    // Truly disconnected groups belong after the connected tree, packed into compact rows.
+    const placed_x = d3.extent(tree, d => d.x) as [number, number]  // bounding box of everything placed so far: the main tree plus any anchored branches
+    const placed_y = d3.extent(tree, d => d.y) as [number, number]
+    const placed_width = placed_x[1] - placed_x[0] + node_separation
+    const total_area = unanchored_components.reduce((sum, component) => sum + component.width * component.height, 0)  // rough total footprint of everything still to place
+    const widest_component = Math.max(0, ...unanchored_components.map(component => component.width))  // 0 floor: Math.max() of an empty array is -Infinity
+    const row_width = Math.max(placed_width, widest_component, Math.sqrt(total_area) * 1.5)  // wide enough to roughly match the tree above, never narrower than the widest single component
+    const gap_x = node_separation * .5  // tighter than a normal card gap: these are compact rows, not a generation of the tree
+    const gap_y = level_separation
+    let cursor_x = placed_x[0]  // next free x position for a component in the current row
+    let cursor_y = placed_y[1] + gap_y  // first row starts one gap below the lowest placed card
+    let row_height = 0  // tallest component seen in the current row, so the next row starts clear of all of them
+
+    unanchored_components.forEach(component => {
+      if (cursor_x > placed_x[0] && cursor_x + component.width > placed_x[0] + row_width) {
+        cursor_x = placed_x[0]  // this component doesn't fit on the current row, wrap to a new one
         cursor_y += row_height + gap_y
         row_height = 0
       }
-      let dx = cursor_x - component.min_x + node_separation / 2
-      let dy = cursor_y - component.min_y + level_separation / 2
-      const anchored_node = component.anchor && component.nodes.find(d => d.data.id === component.anchor!.person_id)
-      const related_node = component.anchor && tree.find(d => d.data.id === component.anchor!.relative_id)
-      if (component.anchor && anchored_node && related_node) {
-        const direction = component.anchor.kind === "parents" ? 1 : component.anchor.kind === "children" ? -1 : 0
-        if (is_horizontal) {
-          const desired_x = related_node.x + direction * level_separation
-          const occupied = tree.filter(d => Math.abs(d.x - desired_x) < level_separation / 2)
-          const desired_y = (occupied.length ? Math.max(...occupied.map(d => d.y)) : related_node.y) + node_separation
-          dx = desired_x - anchored_node.x
-          dy = desired_y - anchored_node.y
-        } else {
-          const desired_y = related_node.y + direction * level_separation
-          const occupied = tree.filter(d => Math.abs(d.y - desired_y) < level_separation / 2)
-          const desired_x = (occupied.length ? Math.max(...occupied.map(d => d.x)) : related_node.x) + node_separation
-          dx = desired_x - anchored_node.x
-          dy = desired_y - anchored_node.y
+      const dx = cursor_x - component.min_x + node_separation / 2  // shift so the component's own left edge lands at cursor_x
+      const dy = cursor_y - component.min_y + level_separation / 2  // shift so the component's own top edge lands at cursor_y
+      appendShifted(component.nodes, dx, dy)
+      cursor_x += component.width + gap_x  // advance past this component for the next one in the row
+      row_height = Math.max(row_height, component.height)
+    })
+
+    // Searches outward from base_dx in both directions, in half-card steps, for the nearest
+    // offset where no node in `nodes` lands in the same generation row as, and too close to,
+    // an already-placed node. Throws rather than silently overlapping if nothing within 200
+    // steps works, since a silently overlapping tree is worse than a visible error.
+    function nearestCollisionFreeShift(nodes:TreeDatum[], base_dx:number, dy:number) {
+      const step = node_separation / 2
+      for (let distance = 0; distance < 200; distance++) {
+        const offsets = distance === 0 ? [0] : [distance * step, -distance * step]  // try the ideal position first, then alternate left/right around it
+        for (const offset of offsets) {
+          const dx = base_dx + offset
+          const collides = nodes.some(candidate => tree.some(placed => {
+            const same_generation = is_horizontal
+              ? Math.abs(candidate.x + dx - placed.x) < level_separation / 2  // horizontal layout: generations run along x
+              : Math.abs(candidate.y + dy - placed.y) < level_separation / 2  // vertical layout: generations run along y
+            const centres_too_close = is_horizontal
+              ? Math.abs(candidate.y + dy - placed.y) < node_separation
+              : Math.abs(candidate.x + dx - placed.x) < node_separation
+            return same_generation && centres_too_close  // only a collision if it's both the same row AND too close along that row
+          }))
+          if (!collides) return dx
         }
       }
-      component.nodes.forEach(d => {
-        shift(d, "x", dx); shift(d, "sx", dx); shift(d, "psx", dx)
+      throw new Error("Unable to place supplemental family branch without overlap")
+    }
+
+    function appendShifted(nodes:TreeDatum[], dx:number, dy:number) {
+      nodes.forEach(d => {
+        shift(d, "x", dx); shift(d, "sx", dx); shift(d, "psx", dx)  // sx/psx are spouse/parent-spouse x offsets used for drawing link lines; must move with the card
         shift(d, "y", dy); shift(d, "sy", dy); shift(d, "psy", dy)
-        tree.push(d)
+        tree.push(d)  // this is what actually adds the (now correctly positioned) node to the tree that gets rendered
       })
-      if (!component.anchor) {
-        cursor_x += component.width + gap_x
-        row_height = Math.max(row_height, component.height)
-      }
-    })
+    }
     data_stash.forEach(d => d.main = d.id === main_id)  // recursive mini-layouts temporarily set their own roots as main
 
     function shift(d:TreeDatum, key:"x"|"y"|"sx"|"sy"|"psx"|"psy", amount:number) {
-      if (typeof d[key] === "number") d[key] = d[key]! + amount
+      if (typeof d[key] === "number") d[key] = d[key]! + amount  // sx/sy/psx/psy are only set on some nodes (spouses, progeny); leave the rest untouched
     }
   }
 
