@@ -132,6 +132,7 @@
 <div class="toolbar">
   <button type="button" id="viewModeButton">View full tree</button>
   <button type="button" id="focusMeButton" hidden>Focus on me</button>
+  <button type="button" id="resetViewButton" title="Back to the full tree, fitted, no matter how far you've clicked in">Reset view</button>
   <span class="sep"></span>
   <button type="button" id="printButton">Print</button>
   <button type="button" id="exportButton">Export HTML</button>
@@ -157,6 +158,7 @@
 const saveStatus = document.getElementById('saveStatus')
 const viewModeButton = document.getElementById('viewModeButton')
 const focusMeButton = document.getElementById('focusMeButton')
+const resetViewButton = document.getElementById('resetViewButton')
 const printButton = document.getElementById('printButton')
 const exportButton = document.getElementById('exportButton')
 let selectedPersonId = null  // small text indicator so a save failure is visible, not silent
@@ -206,7 +208,6 @@ function create(data) {
   const f3EditTree = f3Chart.editTree()
     .setFields(["first name", "middle name", "last name", "common name", "birthday", "avatar"])
     .setEditFirst(true)  // clicking a card opens its edit form directly, rather than an info-only view first
-    .setCardClickOpen(f3Card)
     .setLinkExistingRelConfig({  // lets an "Add Father/Mother/Spouse/Son/Daughter" pick an existing person instead of only creating a new one
       linkRelLabel: (d) => displayName(d) || '(no name)',
       title: 'Link to existing person',
@@ -219,10 +220,25 @@ function create(data) {
     })
     .setOnChange(() => save(f3EditTree.exportData()))  // fires after every add/edit/delete/link, so nothing is ever lost between visits
 
+  // Wired by hand instead of setCardClickOpen(f3Card): that helper opens the edit form FIRST
+  // and only recenters the tree as a second, separate step afterward (its own
+  // onCardClickDefault), with a bare updateTree({}) that doesn't reliably refresh the view
+  // once full-tree/show-unconnected mode is on - clicking into someone would silently
+  // half-update and look like a dead end with no way back. Doing both steps ourselves, in
+  // this order, with an explicit fit whenever full-tree mode is on, makes every click land on
+  // a coherent, fully-visible view instead.
+  f3Card.setOnCardClick((e, d) => {
+    f3Chart.store.updateMainId(d.data.id)
+    if (fullTree) f3Chart.setShowUnconnected(true)
+    f3Chart.updateTree(fullTree ? { tree_position: 'fit' } : {})
+    f3EditTree.open(d.data)
+  })
+
   let fullTree = false
   f3Chart.updateTree({ initial: true })
   f3EditTree.open(f3Chart.getMainDatum())
   f3Chart.updateTree({ initial: true })
+  const homeId = f3Chart.getMainDatum().id  // whoever this login started on - the fixed anchor "Reset view" always returns to, regardless of how far a click-driven recenter has wandered
 
   focusMeButton.hidden = !loginPersonId || !data.some(d => d.id === loginPersonId)
   focusMeButton.addEventListener('click', () => {
@@ -234,6 +250,15 @@ function create(data) {
     f3Chart.setShowUnconnected(false)
     f3Chart.updateTree({ tree_position: 'fit' })
     f3EditTree.open(me)
+    updateViewModeButton()
+  })
+
+  resetViewButton.addEventListener('click', () => {
+    selectedPersonId = homeId
+    fullTree = true
+    f3Chart.store.updateMainId(homeId)
+    f3Chart.setShowUnconnected(true)
+    f3Chart.updateTree({ tree_position: 'fit' })
     updateViewModeButton()
   })
 
