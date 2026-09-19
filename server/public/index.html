@@ -43,8 +43,9 @@ function create(data) {
     .setCardYSpacing(150)
 
   const displayName = (d) => {
-    const legalName = [d.data['first name'], d.data['middle name'], d.data['last name']].filter(Boolean).join(' ')
-    return d.data['common name'] ? `${legalName} (${d.data['common name']})` : legalName
+    const legalGivenNames = [d.data['first name'], d.data['middle name']].filter(Boolean).join(' ')
+    const publishedGivenNames = d.data['common name'] ? `${d.data['common name']} (${legalGivenNames})` : legalGivenNames
+    return [publishedGivenNames, d.data['last name']].filter(Boolean).join(' ')
   }
 
   const f3Card = f3Chart.setCard(f3.CardHtml)
