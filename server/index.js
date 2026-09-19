@@ -11,7 +11,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))  // this file's o
 const PUBLIC_DIR = path.join(__dirname, 'public')  // static frontend files live here
 const DATA_FILE = process.env.DATA_FILE || '/data/tree.json'  // persisted tree data; /data is the mounted volume in production
 const PORT = process.env.PORT || 3000
-const AUTH_USER_PERSON_IDS = { rodney: "rodney-lunt", pauline: "pauline-leask" }
+const AUTH_USER_PERSON_IDS = {
+  rodney: "rodney-lunt",
+  pauline: "pauline-leask",
+  georgia: "georgia-louise-brandi",
+  auntyv: "vivienne-lunt",
+}
 
 function authenticatedUsername(req) {
   const forwarded = req.headers["x-authenticated-user"]
@@ -56,6 +61,7 @@ const MIME = {  // just enough types for this app's own static files
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.map': 'application/json',
+  '.txt': 'text/plain; charset=utf-8',
 }
 
 async function serveStatic(req, res) {
