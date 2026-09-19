@@ -80,7 +80,7 @@ export default function calculateTree(data: Data, {
   setupTid(tree)
   // setupFromTo(tree)
   if (duplicate_branch_toggle) handleDuplicateSpouseToggle(tree)
-  if (show_unconnected) placeUnconnected(tree, data_stash, node_separation, level_separation)
+  if (show_unconnected) placeUnconnected(tree, data_stash, node_separation, level_separation, main.id)
   const dim = calculateTreeDim(tree, node_separation, level_separation)
 
   return {data: tree, data_stash, dim, main_id: main.id, is_horizontal}
@@ -264,10 +264,16 @@ export default function calculateTree(data: Data, {
    * plain floating cards (no parent/children/spouses, so no links are drawn to them) tiled in
    * a grid below the main tree, so they can still be seen, opened, and linked in later via the
    * existing "link to existing person" add-relative flow (see store/add-existing-rel.ts).
+   *
+   * "Unconnected" is deliberately checked by walking the full rels graph from main (below),
+   * not by checking membership in `tree`: `tree` is only main's current ego-centric window
+   * (ancestry + progeny from whichever id is main right now), so a person can be genuinely
+   * linked into the family several steps away and still be absent from `tree` without being
+   * disconnected. Flagging those as floating would be actively wrong, not just imprecise.
    */
-  function placeUnconnected(tree:TreeDatum[], data_stash:Data, node_separation:number, level_separation:number) {
-    const connected_ids = new Set(tree.map(d => d.data.id))
-    const unconnected = data_stash.filter(d => !connected_ids.has(d.id) && !d.to_add)
+  function placeUnconnected(tree:TreeDatum[], data_stash:Data, node_separation:number, level_separation:number, main_id:string) {
+    const reachable = getReachableIds(main_id, data_stash)
+    const unconnected = data_stash.filter(d => !reachable.has(d.id) && !d.to_add)
     if (!unconnected.length) return
 
     const x_extent = d3.extent(tree, (d:TreeDatum) => d.x) as [number, number]
@@ -369,6 +375,22 @@ export default function calculateTree(data: Data, {
     if (is_ancestry) handleDuplicateHierarchyAncestry(root, on_toggle_one_close_others)
     else handleDuplicateHierarchyProgeny(root, data_stash, on_toggle_one_close_others)
   }
+}
+
+/** BFS over parents/spouses/children from `start_id` across the whole data set, ignoring the current ego-centric view. */
+function getReachableIds(start_id:string, data_stash:Data) {
+  const visited = new Set<string>()
+  const queue = [start_id]
+  while (queue.length) {
+    const id = queue.pop() as string
+    if (visited.has(id)) continue
+    visited.add(id)
+    const d = data_stash.find(d0 => d0.id === id)
+    if (!d) continue
+    const neighbors = [...(d.rels.parents || []), ...(d.rels.spouses || []), ...(d.rels.children || [])]
+    neighbors.forEach(n => { if (n && !visited.has(n)) queue.push(n) })
+  }
+  return visited
 }
 
 function setupTid(tree:TreeDatum[]) {
