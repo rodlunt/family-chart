@@ -78,11 +78,11 @@ export function createHistory(store: Store, getStoreDataCopy: () => Data, onUpda
 export function createHistoryControls(cont: HTMLElement, history: History): HistoryControls {
   const history_controls = d3.select(cont).append("div").attr("class", "f3-history-controls")
   cont.insertBefore(history_controls.node()!, cont.firstChild)
-  const back_btn = history_controls.append("button").attr("class", "f3-back-button").on("click", () => {
+  const back_btn = history_controls.append("button").attr("class", "f3-back-button").attr("title", "Undo").attr("aria-label", "Undo").on("click", () => {
     history.back()
     updateButtons()
   })
-  const forward_btn = history_controls.append("button").attr("class", "f3-forward-button").on("click", () => {
+  const forward_btn = history_controls.append("button").attr("class", "f3-forward-button").attr("title", "Redo").attr("aria-label", "Redo").on("click", () => {
     history.forward()
     updateButtons()
   })

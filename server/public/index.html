@@ -9,13 +9,23 @@
   <style>
     body { font-family: 'Arial', sans-serif; margin: 0; }
     #saveStatus { position: absolute; top: 52px; left: 8px; z-index: 10; color: #fff; font-size: 13px; background: rgba(0,0,0,.5); padding: 4px 8px; border-radius: 4px; }
-    #viewModeButton { position: absolute; top: 8px; left: 105px; z-index: 10; color: #fff; background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.4); border-radius: 4px; padding: 7px 10px; cursor: pointer; }
+    #viewModeButton { position: absolute; top: 8px; left: 285px; z-index: 10; color: #fff; background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.4); border-radius: 4px; padding: 7px 10px; cursor: pointer; }
+    #upLevelControl { position: absolute; top: 8px; left: 105px; z-index: 11; color: #fff; background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.4); border-radius: 4px; }
+    #upLevelControl summary { padding: 7px 10px; cursor: pointer; list-style: none; }
+    #upLevelControl summary::-webkit-details-marker { display: none; }
+    #upLevelOptions { position: absolute; top: 38px; left: 0; min-width: 220px; padding: 5px; background: rgb(33,33,33); border: 1px solid rgba(255,255,255,.4); border-radius: 4px; }
+    #upLevelOptions button { display: block; width: 100%; padding: 8px; color: #fff; text-align: left; background: transparent; border: 0; cursor: pointer; }
+    #upLevelOptions button:hover { background: rgba(255,255,255,.15); }
     .relationship-status { margin: 14px 0; padding: 10px; border: 1px solid rgba(255,255,255,.25); border-radius: 4px; }
     .relationship-status legend { padding: 0 5px; font-size: 13px; }
     .relationship-status label { display: block; margin: 7px 0; font-size: 13px; }
   </style>
 </head>
 <body>
+<details id="upLevelControl">
+  <summary>↑ Up one generation</summary>
+  <div id="upLevelOptions"></div>
+</details>
 <button type="button" id="viewModeButton">View full tree</button>
 <div id="saveStatus"></div>
 <div id="FamilyChart" class="f3" style="width:100%;height:100vh;background-color:rgb(33,33,33);color:#fff;"></div>
@@ -25,6 +35,8 @@
 <script>
 const saveStatus = document.getElementById('saveStatus')
 const viewModeButton = document.getElementById('viewModeButton')
+const upLevelControl = document.getElementById('upLevelControl')
+const upLevelOptions = document.getElementById('upLevelOptions')
 let selectedPersonId = null  // small text indicator so a save failure is visible, not silent
 
 function setStatus(text, isError) {
@@ -65,6 +77,7 @@ function create(data) {
     .setOnFormCreation(({ cont, form_creator }) => {
       selectedPersonId = form_creator.datum_id
       updateViewModeButton()
+      updateUpLevelControl()
       addRelationshipStatusControls(cont, form_creator.datum_id)
     })
     .setOnChange(() => save(f3EditTree.exportData()))  // fires after every add/edit/delete/link, so nothing is ever lost between visits
@@ -85,6 +98,33 @@ function create(data) {
   function updateViewModeButton() {
     const selected = data.find(d => d.id === selectedPersonId)
     viewModeButton.textContent = fullTree && selected ? `Focus on ${displayName(selected)}` : 'View full tree'
+  }
+
+  function updateUpLevelControl() {
+    const selected = data.find(d => d.id === selectedPersonId)
+    const parents = (selected?.rels.parents || []).map(id => data.find(d => d.id === id)).filter(Boolean)
+    upLevelOptions.replaceChildren()
+    parents.forEach(parent => {
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.textContent = displayName(parent)
+      button.addEventListener('click', () => {
+        selectedPersonId = parent.id
+        fullTree = false
+        f3Chart.store.updateMainId(parent.id)
+        f3Chart.setShowUnconnected(false)
+        f3Chart.updateTree({ tree_position: 'fit' })
+        f3EditTree.open(parent)
+        upLevelControl.removeAttribute('open')
+        updateViewModeButton()
+        updateUpLevelControl()
+      })
+      upLevelOptions.appendChild(button)
+    })
+    const available = parents.length > 0
+    upLevelControl.style.opacity = available ? '1' : '.45'
+    upLevelControl.style.pointerEvents = available ? 'auto' : 'none'
+    if (!available) upLevelControl.removeAttribute('open')
   }
 
   function addRelationshipStatusControls(container, personId) {
