@@ -69,11 +69,11 @@ function create(data) {
     })
     .setOnChange(() => save(f3EditTree.exportData()))  // fires after every add/edit/delete/link, so nothing is ever lost between visits
 
+  let fullTree = false
   f3Chart.updateTree({ initial: true })
   f3EditTree.open(f3Chart.getMainDatum())
   f3Chart.updateTree({ initial: true })
 
-  let fullTree = false
   viewModeButton.addEventListener('click', () => {
     fullTree = !fullTree
     if (selectedPersonId) f3Chart.store.updateMainId(selectedPersonId)
