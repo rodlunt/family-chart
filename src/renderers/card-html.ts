@@ -142,7 +142,7 @@ export default function CardHtml(props: {
 
     if (d.data.unknown) class_list.push('card-unknown')
 
-    if (d.floating) class_list.push('card-floating')
+    if (d.floating) class_list.push('card-floating')  // dashed-border styling for cards placeUnconnected() added, see family-chart.css
 
     return class_list
   }

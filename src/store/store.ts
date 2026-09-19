@@ -67,7 +67,7 @@ export default function createStore(initial_state: StoreState): Store {
     if (state.show_siblings_of_main !== undefined) args.show_siblings_of_main = state.show_siblings_of_main;
     if (state.private_cards_config !== undefined) args.private_cards_config = state.private_cards_config;
     if (state.duplicate_branch_toggle !== undefined) args.duplicate_branch_toggle = state.duplicate_branch_toggle;
-    if (state.show_unconnected !== undefined) args.show_unconnected = state.show_unconnected;
+    if (state.show_unconnected !== undefined) args.show_unconnected = state.show_unconnected;  // only override calculateTree's own default (true) if setShowUnconnected() was actually called
 
     return calculateTree(state.data, args);
   }

@@ -244,9 +244,9 @@ export class Chart {
    * @returns The CreateChart instance
    */
   setShowUnconnected(show_unconnected: boolean) {
-    this.store.state.show_unconnected = show_unconnected
+    this.store.state.show_unconnected = show_unconnected  // read by store.calcTree() and forwarded into calculateTree() on the next updateTree()
 
-    return this
+    return this  // chainable, matching every other setter in this class
   }
 
   /**

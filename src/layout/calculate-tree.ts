@@ -25,7 +25,7 @@ export interface CalculateTreeOptions {
   private_cards_config?: any;
   duplicate_branch_toggle?: boolean;
   on_toggle_one_close_others?: boolean;
-  show_unconnected?: boolean;
+  show_unconnected?: boolean;  // whether people with no path back to main are rendered as floating cards (see placeUnconnected below)
 }
 
 export interface Tree {
@@ -53,7 +53,7 @@ export default function calculateTree(data: Data, {
   private_cards_config = undefined,
   duplicate_branch_toggle = false,
   on_toggle_one_close_others = true,
-  show_unconnected = true,
+  show_unconnected = true,  // default on: floating cards are shown unless the caller opts out
 }: CalculateTreeOptions): Tree {
   if (!data || !data.length) throw new Error('No data')
 
@@ -80,8 +80,8 @@ export default function calculateTree(data: Data, {
   setupTid(tree)
   // setupFromTo(tree)
   if (duplicate_branch_toggle) handleDuplicateSpouseToggle(tree)
-  if (show_unconnected) placeUnconnected(tree, data_stash, node_separation, level_separation, main.id)
-  const dim = calculateTreeDim(tree, node_separation, level_separation)
+  if (show_unconnected) placeUnconnected(tree, data_stash, node_separation, level_separation, main.id)  // append floating cards for anyone not reachable from main, unless turned off
+  const dim = calculateTreeDim(tree, node_separation, level_separation)  // must run after placeUnconnected so the bounding box includes the floating cards too
 
   return {data: tree, data_stash, dim, main_id: main.id, is_horizontal}
 
@@ -272,29 +272,29 @@ export default function calculateTree(data: Data, {
    * disconnected. Flagging those as floating would be actively wrong, not just imprecise.
    */
   function placeUnconnected(tree:TreeDatum[], data_stash:Data, node_separation:number, level_separation:number, main_id:string) {
-    const reachable = getReachableIds(main_id, data_stash)
-    const unconnected = data_stash.filter(d => !reachable.has(d.id) && !d.to_add)
-    if (!unconnected.length) return
+    const reachable = getReachableIds(main_id, data_stash)  // every id truly linked to main by some chain of rels, anywhere in the data
+    const unconnected = data_stash.filter(d => !reachable.has(d.id) && !d.to_add)  // real people outside that set, minus the library's own "to add" spouse placeholders
+    if (!unconnected.length) return  // nothing to do, don't touch tree/dim
 
-    const x_extent = d3.extent(tree, (d:TreeDatum) => d.x) as [number, number]
-    const y_extent = d3.extent(tree, (d:TreeDatum) => d.y) as [number, number]
-    const gap_x = node_separation
-    const gap_y = level_separation * 1.5
-    const cols = Math.max(1, Math.floor(((x_extent[1] - x_extent[0]) + gap_x) / gap_x))
-    const start_x = x_extent[0]
-    const start_y = y_extent[1] + gap_y
+    const x_extent = d3.extent(tree, (d:TreeDatum) => d.x) as [number, number]  // [min x, max x] of the already-laid-out tree
+    const y_extent = d3.extent(tree, (d:TreeDatum) => d.y) as [number, number]  // [min y, max y] of the already-laid-out tree
+    const gap_x = node_separation  // horizontal spacing between floating cards, matching normal card spacing
+    const gap_y = level_separation * 1.5  // vertical spacing between rows of floating cards; 1.5x a normal generation gap so the grid reads as visually separate from the tree
+    const cols = Math.max(1, Math.floor(((x_extent[1] - x_extent[0]) + gap_x) / gap_x))  // how many floating cards fit across the tree's own width, so the grid roughly matches it
+    const start_x = x_extent[0]  // left-align the floating grid with the tree's own left edge
+    const start_y = y_extent[1] + gap_y  // start one gap below the tree's lowest card
 
     unconnected.forEach((d, i) => {
-      const col = i % cols
+      const col = i % cols  // wrap to a new row after `cols` cards
       const row = Math.floor(i / cols)
       tree.push({
-        data: d,
-        x: start_x + col * gap_x,
-        y: start_y + row * gap_y,
-        depth: 0,
-        tid: d.id,
-        all_rels_displayed: true,
-        floating: true,
+        data: d,  // the actual person record
+        x: start_x + col * gap_x,  // grid column position
+        y: start_y + row * gap_y,  // grid row position
+        depth: 0,  // not part of any hierarchy level, but renderers expect a number here
+        tid: d.id,  // unique render id; safe to reuse the person's own id since they appear nowhere else in `tree`
+        all_rels_displayed: true,  // suppresses "missing relative" styling that doesn't apply to a standalone floating card
+        floating: true,  // flags this card for the dashed "card-floating" CSS class and for the connectivity check above
       } as TreeDatum)
     })
   }
@@ -379,18 +379,18 @@ export default function calculateTree(data: Data, {
 
 /** BFS over parents/spouses/children from `start_id` across the whole data set, ignoring the current ego-centric view. */
 function getReachableIds(start_id:string, data_stash:Data) {
-  const visited = new Set<string>()
-  const queue = [start_id]
+  const visited = new Set<string>()  // ids confirmed reachable so far; also doubles as the "already queued" check
+  const queue = [start_id]  // ids still to visit, seeded with main
   while (queue.length) {
-    const id = queue.pop() as string
-    if (visited.has(id)) continue
+    const id = queue.pop() as string  // take the next id to visit (order doesn't matter for reachability)
+    if (visited.has(id)) continue  // already handled via a different path, skip
     visited.add(id)
-    const d = data_stash.find(d0 => d0.id === id)
-    if (!d) continue
-    const neighbors = [...(d.rels.parents || []), ...(d.rels.spouses || []), ...(d.rels.children || [])]
-    neighbors.forEach(n => { if (n && !visited.has(n)) queue.push(n) })
+    const d = data_stash.find(d0 => d0.id === id)  // look up the actual record for this id
+    if (!d) continue  // id referenced in someone's rels but no longer in the data (e.g. deleted), nothing to walk from it
+    const neighbors = [...(d.rels.parents || []), ...(d.rels.spouses || []), ...(d.rels.children || [])]  // everyone directly related to this person, in any direction
+    neighbors.forEach(n => { if (n && !visited.has(n)) queue.push(n) })  // queue up anyone not already visited
   }
-  return visited
+  return visited  // every id transitively reachable from start_id
 }
 
 function setupTid(tree:TreeDatum[]) {
