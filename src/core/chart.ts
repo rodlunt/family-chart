@@ -239,6 +239,17 @@ export class Chart {
   }
 
   /**
+   * Set whether people with no relations linking them into the main tree are shown as floating cards
+   * @param show_unconnected - Whether to show unconnected people (default true).
+   * @returns The CreateChart instance
+   */
+  setShowUnconnected(show_unconnected: boolean) {
+    this.store.state.show_unconnected = show_unconnected
+
+    return this
+  }
+
+  /**
    * Set the Card creation function
    * @param Card - The card function.
    * @returns The CreateChart instance

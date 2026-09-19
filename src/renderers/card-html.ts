@@ -142,6 +142,8 @@ export default function CardHtml(props: {
 
     if (d.data.unknown) class_list.push('card-unknown')
 
+    if (d.floating) class_list.push('card-floating')
+
     return class_list
   }
 

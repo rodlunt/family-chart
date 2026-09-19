@@ -37,6 +37,11 @@ function create(data) {
     .setFields(["first name","last name","birthday", "avatar"])
     .setEditFirst(true)  // true = open form on click, false = open info in click
     .setCardClickOpen(f3Card)
+    .setLinkExistingRelConfig({  // adds a "link to existing person" option to add-relative forms, so floating/unconnected people can be wired into the tree instead of only creating new ones
+      linkRelLabel: (d) => `${d.data['first name'] || ''} ${d.data['last name'] || ''}`.trim() || '(no name)',
+      title: 'Link to existing person',
+      select_placeholder: 'Select a person',
+    })
     // .setNoEdit()  // if you want to just see info form
 
   f3Chart.updateTree({initial: true})

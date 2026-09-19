@@ -25,6 +25,7 @@ export interface CalculateTreeOptions {
   private_cards_config?: any;
   duplicate_branch_toggle?: boolean;
   on_toggle_one_close_others?: boolean;
+  show_unconnected?: boolean;
 }
 
 export interface Tree {
@@ -52,6 +53,7 @@ export default function calculateTree(data: Data, {
   private_cards_config = undefined,
   duplicate_branch_toggle = false,
   on_toggle_one_close_others = true,
+  show_unconnected = true,
 }: CalculateTreeOptions): Tree {
   if (!data || !data.length) throw new Error('No data')
 
@@ -78,6 +80,7 @@ export default function calculateTree(data: Data, {
   setupTid(tree)
   // setupFromTo(tree)
   if (duplicate_branch_toggle) handleDuplicateSpouseToggle(tree)
+  if (show_unconnected) placeUnconnected(tree, data_stash, node_separation, level_separation)
   const dim = calculateTreeDim(tree, node_separation, level_separation)
 
   return {data: tree, data_stash, dim, main_id: main.id, is_horizontal}
@@ -252,6 +255,42 @@ export default function calculateTree(data: Data, {
       }
     })
 
+  }
+
+  /**
+   * People with no relations linking them into main's tree are otherwise invisible: the
+   * d3.hierarchy walk in calculateTreePositions only ever visits ids referenced by someone
+   * else's rels, so anyone unreferenced never appears in `tree` at all. This appends them as
+   * plain floating cards (no parent/children/spouses, so no links are drawn to them) tiled in
+   * a grid below the main tree, so they can still be seen, opened, and linked in later via the
+   * existing "link to existing person" add-relative flow (see store/add-existing-rel.ts).
+   */
+  function placeUnconnected(tree:TreeDatum[], data_stash:Data, node_separation:number, level_separation:number) {
+    const connected_ids = new Set(tree.map(d => d.data.id))
+    const unconnected = data_stash.filter(d => !connected_ids.has(d.id) && !d.to_add)
+    if (!unconnected.length) return
+
+    const x_extent = d3.extent(tree, (d:TreeDatum) => d.x) as [number, number]
+    const y_extent = d3.extent(tree, (d:TreeDatum) => d.y) as [number, number]
+    const gap_x = node_separation
+    const gap_y = level_separation * 1.5
+    const cols = Math.max(1, Math.floor(((x_extent[1] - x_extent[0]) + gap_x) / gap_x))
+    const start_x = x_extent[0]
+    const start_y = y_extent[1] + gap_y
+
+    unconnected.forEach((d, i) => {
+      const col = i % cols
+      const row = Math.floor(i / cols)
+      tree.push({
+        data: d,
+        x: start_x + col * gap_x,
+        y: start_y + row * gap_y,
+        depth: 0,
+        tid: d.id,
+        all_rels_displayed: true,
+        floating: true,
+      } as TreeDatum)
+    })
   }
 
   function calculateTreeDim(tree:TreeDatum[], node_separation:number, level_separation:number) {

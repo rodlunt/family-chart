@@ -499,6 +499,10 @@
   display: none;
 }
 
+.f3 div.card-floating .card-inner {
+  border: 2px dashed orange;
+}
+
 .f3 div.card-new-rel .card-inner {
   border-width: 1px;
   border-style: dashed;
