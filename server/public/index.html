@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="/vendor/family-chart.css">
   <style>
     body { font-family: 'Arial', sans-serif; margin: 0; }
-    #saveStatus { position: absolute; top: 8px; left: 8px; z-index: 10; color: #fff; font-size: 13px; background: rgba(0,0,0,.5); padding: 4px 8px; border-radius: 4px; }
+    #saveStatus { position: absolute; top: 52px; left: 8px; z-index: 10; color: #fff; font-size: 13px; background: rgba(0,0,0,.5); padding: 4px 8px; border-radius: 4px; }
     #showUnconnectedControl { display: block; margin: 8px 0; font-size: 14px; }
   </style>
 </head>
@@ -43,14 +43,14 @@ function create(data) {
     .setCardYSpacing(150)
 
   const f3Card = f3Chart.setCard(f3.CardHtml)
-    .setCardDisplay([["first name", "last name"], ["birthday"]])
+    .setCardDisplay([["first name", "middle name", "last name"], ["birthday"]])
 
   const f3EditTree = f3Chart.editTree()
-    .setFields(["first name", "last name", "birthday", "avatar"])
+    .setFields(["first name", "middle name", "last name", "birthday", "avatar"])
     .setEditFirst(true)  // clicking a card opens its edit form directly, rather than an info-only view first
     .setCardClickOpen(f3Card)
     .setLinkExistingRelConfig({  // lets an "Add Father/Mother/Spouse/Son/Daughter" pick an existing person instead of only creating a new one
-      linkRelLabel: (d) => `${d.data['first name'] || ''} ${d.data['last name'] || ''}`.trim() || '(no name)',
+      linkRelLabel: (d) => `${d.data['first name'] || ''} ${d.data['middle name'] || ''} ${d.data['last name'] || ''}`.replace(/\s+/g, ' ').trim() || '(no name)',
       title: 'Link to existing person',
       select_placeholder: 'Select a person',
     })
