@@ -81,7 +81,8 @@ export default function calculateTree(data: Data, {
   // setupFromTo(tree)
   if (duplicate_branch_toggle) handleDuplicateSpouseToggle(tree)
   if (show_unconnected) placeUnconnected(tree, data_stash, node_separation, level_separation, main.id)  // append floating cards for anyone not reachable from main, unless turned off
-  const dim = calculateTreeDim(tree, node_separation, level_separation)  // must run after placeUnconnected so the bounding box includes the floating cards too
+  const fit_tree = tree.filter(d => !d.floating)  // keep disconnected mini-trees pannable without shrinking the main family during the initial auto-fit
+  const dim = calculateTreeDim(fit_tree.length ? fit_tree : tree, node_separation, level_separation)
 
   return {data: tree, data_stash, dim, main_id: main.id, is_horizontal}
 
@@ -258,45 +259,90 @@ export default function calculateTree(data: Data, {
   }
 
   /**
-   * People with no relations linking them into main's tree are otherwise invisible: the
-   * d3.hierarchy walk in calculateTreePositions only ever visits ids referenced by someone
-   * else's rels, so anyone unreferenced never appears in `tree` at all. This appends them as
-   * plain floating cards (no parent/children/spouses, so no links are drawn to them) tiled in
-   * a grid below the main tree, so they can still be seen, opened, and linked in later via the
-   * existing "link to existing person" add-relative flow (see store/add-existing-rel.ts).
-   *
-   * "Unconnected" is deliberately checked by walking the full rels graph from main (below),
-   * not by checking membership in `tree`: `tree` is only main's current ego-centric window
-   * (ancestry + progeny from whichever id is main right now), so a person can be genuinely
-   * linked into the family several steps away and still be absent from `tree` without being
-   * disconnected. Flagging those as floating would be actively wrong, not just imprecise.
+   * Lay out every family component that is disconnected from the main person as its own
+   * compact mini-tree. The previous implementation flattened every unreachable person into
+   * one long card grid, which hid real relationships inside those branches and forced the
+   * chart to zoom much farther out than their actual structure required.
    */
   function placeUnconnected(tree:TreeDatum[], data_stash:Data, node_separation:number, level_separation:number, main_id:string) {
-    const reachable = getReachableIds(main_id, data_stash)  // every id truly linked to main by some chain of rels, anywhere in the data
-    const unconnected = data_stash.filter(d => !reachable.has(d.id) && !d.to_add)  // real people outside that set, minus the library's own "to add" spouse placeholders
-    if (!unconnected.length) return  // nothing to do, don't touch tree/dim
+    const reachable = getReachableIds(main_id, data_stash)  // everyone belonging to the main family component
+    const disconnected_ids = new Set(data_stash.filter(d => !reachable.has(d.id)).map(d => d.id))
+    const components:Data[] = []
+    const visited = new Set<string>()
 
-    const x_extent = d3.extent(tree, (d:TreeDatum) => d.x) as [number, number]  // [min x, max x] of the already-laid-out tree
-    const y_extent = d3.extent(tree, (d:TreeDatum) => d.y) as [number, number]  // [min y, max y] of the already-laid-out tree
-    const gap_x = node_separation  // horizontal spacing between floating cards, matching normal card spacing
-    const gap_y = level_separation * 1.5  // vertical spacing between rows of floating cards; 1.5x a normal generation gap so the grid reads as visually separate from the tree
-    const cols = Math.max(1, Math.floor(((x_extent[1] - x_extent[0]) + gap_x) / gap_x))  // how many floating cards fit across the tree's own width, so the grid roughly matches it
-    const start_x = x_extent[0]  // left-align the floating grid with the tree's own left edge
-    const start_y = y_extent[1] + gap_y  // start one gap below the tree's lowest card
-
-    unconnected.forEach((d, i) => {
-      const col = i % cols  // wrap to a new row after `cols` cards
-      const row = Math.floor(i / cols)
-      tree.push({
-        data: d,  // the actual person record
-        x: start_x + col * gap_x,  // grid column position
-        y: start_y + row * gap_y,  // grid row position
-        depth: 0,  // not part of any hierarchy level, but renderers expect a number here
-        tid: d.id,  // unique render id; safe to reuse the person's own id since they appear nowhere else in `tree`
-        all_rels_displayed: true,  // suppresses "missing relative" styling that doesn't apply to a standalone floating card
-        floating: true,  // flags this card for the dashed "card-floating" CSS class and for the connectivity check above
-      } as TreeDatum)
+    data_stash.filter(d => disconnected_ids.has(d.id) && !d.to_add).forEach(seed => {
+      if (visited.has(seed.id)) return
+      const component_ids = getReachableIds(seed.id, data_stash)
+      const component = data_stash.filter(d => disconnected_ids.has(d.id) && component_ids.has(d.id))
+      component.forEach(d => visited.add(d.id))
+      components.push(component)
     })
+    if (!components.length) return
+
+    const component_layouts = components.map(component => {
+      const real_people = component.filter(d => !d.to_add)
+      const roots = real_people.filter(d => !(d.rels.parents || []).some(id => disconnected_ids.has(id)))
+      const root = roots.sort((a, b) => (b.rels.children || []).length - (a.rels.children || []).length)[0] || real_people[0]
+      const component_tree = calculateTree(component, {
+        main_id: root.id,
+        node_separation,
+        level_separation,
+        single_parent_empty_card: false,  // placeholders were already created once for the complete data set
+        is_horizontal,
+        sortChildrenFunction,
+        sortSpousesFunction,
+        private_cards_config,
+        duplicate_branch_toggle,
+        on_toggle_one_close_others,
+        show_unconnected: false,
+      }).data
+
+      component.forEach(d => d.main = false)  // a mini-tree root is not the application main person
+      component_tree.forEach(d => d.floating = true)
+      const x_extent = d3.extent(component_tree, d => d.x) as [number, number]
+      const y_extent = d3.extent(component_tree, d => d.y) as [number, number]
+      return {
+        nodes: component_tree,
+        min_x: x_extent[0],
+        min_y: y_extent[0],
+        width: x_extent[1] - x_extent[0] + node_separation,
+        height: y_extent[1] - y_extent[0] + level_separation,
+      }
+    })
+
+    const main_x = d3.extent(tree, d => d.x) as [number, number]
+    const main_y = d3.extent(tree, d => d.y) as [number, number]
+    const main_width = main_x[1] - main_x[0] + node_separation
+    const total_area = component_layouts.reduce((sum, component) => sum + component.width * component.height, 0)
+    const widest_component = Math.max(...component_layouts.map(component => component.width))
+    const row_width = Math.max(main_width, widest_component, Math.sqrt(total_area) * 1.5)
+    const gap_x = node_separation * .5
+    const gap_y = level_separation
+    let cursor_x = main_x[0]
+    let cursor_y = main_y[1] + gap_y
+    let row_height = 0
+
+    component_layouts.forEach(component => {
+      if (cursor_x > main_x[0] && cursor_x + component.width > main_x[0] + row_width) {
+        cursor_x = main_x[0]
+        cursor_y += row_height + gap_y
+        row_height = 0
+      }
+      const dx = cursor_x - component.min_x + node_separation / 2
+      const dy = cursor_y - component.min_y + level_separation / 2
+      component.nodes.forEach(d => {
+        shift(d, "x", dx); shift(d, "sx", dx); shift(d, "psx", dx)
+        shift(d, "y", dy); shift(d, "sy", dy); shift(d, "psy", dy)
+        tree.push(d)
+      })
+      cursor_x += component.width + gap_x
+      row_height = Math.max(row_height, component.height)
+    })
+    data_stash.forEach(d => d.main = d.id === main_id)  // recursive mini-layouts temporarily set their own roots as main
+
+    function shift(d:TreeDatum, key:"x"|"y"|"sx"|"sy"|"psx"|"psy", amount:number) {
+      if (typeof d[key] === "number") d[key] = d[key]! + amount
+    }
   }
 
   function calculateTreeDim(tree:TreeDatum[], node_separation:number, level_separation:number) {
