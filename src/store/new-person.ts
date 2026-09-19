@@ -2,6 +2,16 @@ import { Data, Datum } from "../types/data"
 
 type RelType = 'daughter' | 'son' | 'mother' | 'father' | 'spouse'
 
+// The one place that says which gender a relation slot requires. father/son are fixed
+// male, mother/daughter fixed female; spouse has no fixed gender (a spouse placeholder's
+// gender is freely editable, see createRelsToAdd in layout/calculate-tree.ts), so it
+// returns undefined rather than guessing - callers decide their own spouse handling.
+export function fixedGenderForRelType(rel_type: RelType): Datum['data']['gender'] | undefined {
+  if (rel_type === 'father' || rel_type === 'son') return 'M'
+  if (rel_type === 'mother' || rel_type === 'daughter') return 'F'
+  return undefined
+}
+
 export function createNewPerson({data, rels}: {data: Datum['data'], rels?: {parents?: string[], spouses?: string[], children?: string[]}}) {
   return {
     id: generateUUID(),
@@ -18,7 +28,7 @@ export function createNewPersonWithGenderFromRel({data, rel_type, rel_datum}: {d
   return createNewPerson({data})
 
   function getGenderFromRelative(rel_datum: Datum, rel_type: RelType) {
-    return (["daughter", "mother"].includes(rel_type) || rel_type === "spouse" && rel_datum.data.gender === "M") ? "F" : "M"
+    return fixedGenderForRelType(rel_type) ?? (rel_datum.data.gender === "M" ? "F" : "M")  // spouse: opposite of the person they're being added to
   }
 }
 
