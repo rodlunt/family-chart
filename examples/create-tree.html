@@ -11,6 +11,10 @@
   <style> body { font-family: 'Arial', sans-serif; } </style>
 </head>
 <body>
+<label style="position:absolute;top:8px;right:8px;z-index:10;color:#fff;font-size:14px;background:rgba(0,0,0,.5);padding:4px 8px;border-radius:4px;">
+  <input type="checkbox" id="showUnconnectedToggle" checked>
+  Show unconnected people
+</label>
 <div id="FamilyChart" class="f3" style="width:100%;height:900px;margin:auto;background-color:rgb(33,33,33);color:#fff;"></div>
 <script type="module">
 import f3 from '../src/index.js'
@@ -37,11 +41,23 @@ function create(data) {
     .setFields(["first name","last name","birthday", "avatar"])
     .setEditFirst(true)  // true = open form on click, false = open info in click
     .setCardClickOpen(f3Card)
+    .setLinkExistingRelConfig({  // adds a "link to existing person" option to add-relative forms, so floating/unconnected people can be wired into the tree instead of only creating new ones
+      linkRelLabel: (d) => `${d.data['first name'] || ''} ${d.data['last name'] || ''}`.trim() || '(no name)',  // text shown for each person in the dropdown
+      title: 'Link to existing person',  // heading shown above the dropdown
+      select_placeholder: 'Select a person',  // placeholder option before anything is chosen
+    })
     // .setNoEdit()  // if you want to just see info form
 
   f3Chart.updateTree({initial: true})
   f3EditTree.open(f3Chart.getMainDatum())
   f3Chart.updateTree({initial: true})
+
+  // wires the checkbox above the chart to the show_unconnected option, so floating
+  // cards can be hidden while merging two trees together without losing their data
+  document.getElementById('showUnconnectedToggle').addEventListener('change', (e) => {
+    f3Chart.setShowUnconnected(e.target.checked)  // just changes what renders, the underlying data is untouched either way
+    f3Chart.updateTree({})
+  })
 }
 
 </script>

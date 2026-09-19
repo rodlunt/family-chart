@@ -499,6 +499,11 @@
   display: none;
 }
 
+/* marks a card as not yet connected to the main tree (see placeUnconnected() in calculate-tree.ts) */
+.f3 div.card-floating .card-inner {
+  border: 2px dashed orange;  /* visually distinct from the other dashed-border states above (to-add, unknown, new-rel) */
+}
+
 .f3 div.card-new-rel .card-inner {
   border-width: 1px;
   border-style: dashed;
