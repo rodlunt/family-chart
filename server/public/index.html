@@ -7,27 +7,97 @@
   <title>Family Tree</title>
   <link rel="stylesheet" href="/vendor/family-chart.css">
   <style>
-    body { font-family: 'Arial', sans-serif; margin: 0; padding-top: 36px; }
-    header { position: fixed; top: 0; left: 0; right: 0; height: 36px; line-height: 36px; padding: 0 12px; background: rgba(0,0,0,.85); color: #fff; font-weight: bold; z-index: 20; border-bottom: 1px solid rgba(255,255,255,.15); box-sizing: border-box; }
-    #saveStatus { position: absolute; bottom: 30px; left: 8px; z-index: 10; color: #fff; font-size: 13px; background: rgba(0,0,0,.5); padding: 4px 8px; border-radius: 4px; }
-    /* The library's own undo/redo controls render with no background or border at all (see
-       .f3-history-controls in family-chart.css) - two small icon-only buttons that easily
-       read as a stray rendering artefact rather than a real, intentional control. Giving
-       them the same dark-box treatment as this page's own buttons makes clear what they
-       are. This box goes on .f3-history-controls itself, NOT the shared .f3-nav-cont
-       wrapper: history.ts already sets opacity:0 on .f3-history-controls when there's
-       nothing to undo/redo (true at page load), and styling the wrapper instead would keep
-       an empty dark box visible regardless - the exact stray-artefact look this is fixing. */
-    .f3-nav-cont { width: auto !important; top: 44px !important; left: 8px !important; }
-    .f3-history-controls { background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.4); border-radius: 4px; }
-    #viewModeButton { position: absolute; top: 44px; left: 105px; z-index: 10; color: #fff; background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.4); border-radius: 4px; padding: 7px 10px; cursor: pointer; }
-    #focusMeButton { position: absolute; top: 44px; right: 8px; z-index: 10; color: #fff; background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.4); border-radius: 4px; padding: 7px 10px; cursor: pointer; }
-    #printButton, #exportButton { position: absolute; top: 80px; z-index: 10; color: #fff; background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.4); border-radius: 4px; padding: 7px 10px; cursor: pointer; }
-    #printButton { left: 8px; }
-    #exportButton { left: 90px; }
-    .relationship-status { margin: 14px 0; padding: 10px; border: 1px solid rgba(255,255,255,.25); border-radius: 4px; }
-    .relationship-status legend { padding: 0 5px; font-size: 13px; }
+    /* Design tokens. .f3's own custom properties (family-chart.css) are redeclared here so
+       the whole app - library-rendered cards included - reads as one palette rather than a
+       library skin bolted onto an app chrome. Loaded after the linked stylesheet, so these
+       values win without touching vendored CSS or TS. One accent colour, --line-unconfirmed,
+       does one job everywhere: it is what "not confirmed yet" looks like, on a dashed link,
+       a floating card's border or a checkbox label, and nowhere else. */
+    :root {
+      --ink: #16130f;
+      --panel: #221d17;
+      --panel-line: rgba(242,237,228,.14);
+      --text: #f2ede4;
+      --text-dim: rgba(242,237,228,.55);
+      --line-unconfirmed: #b8823a;
+      --font-display: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, 'Times New Roman', serif;
+      --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    }
+    .f3 {
+      --female-color: #8a5a55;
+      --male-color: #4a6670;
+      --genderless-color: #6b6259;
+      --background-color: var(--ink);
+      --text-color: var(--text);
+      font-family: var(--font-body);
+    }
+    body { font-family: var(--font-body); color: var(--text); background: var(--ink); margin: 0; padding-top: 76px; }
+    header {
+      position: fixed; top: 0; left: 0; right: 0; height: 36px; z-index: 20;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 14px; background: var(--panel); border-bottom: 1px solid var(--panel-line);
+      box-sizing: border-box;
+    }
+    header .title { font-family: var(--font-display); font-size: 16px; letter-spacing: .01em; }
+    #saveStatus { font-size: 12px; color: var(--text-dim); }
+    /* One toolbar strip, not four scattered floating boxes. The library's own undo/redo
+       controls (.f3-nav-cont) render inside #FamilyChart's own box, absolutely positioned
+       relative to it - switched to fixed here so they sit in this same viewport-pinned band
+       regardless of where the chart canvas itself starts. */
+    .toolbar {
+      position: fixed; top: 36px; left: 0; right: 0; height: 40px; z-index: 15;
+      display: flex; align-items: center; gap: 2px; padding: 0 10px;
+      background: var(--panel); border-bottom: 1px solid var(--panel-line); box-sizing: border-box;
+    }
+    .toolbar button {
+      font-family: var(--font-body); font-size: 13px; color: var(--text); background: transparent;
+      border: none; padding: 8px 12px; cursor: pointer; border-radius: 3px; transition: background-color .15s ease;
+    }
+    .toolbar button:hover { background: rgba(242,237,228,.08); }
+    .toolbar .sep { width: 1px; align-self: stretch; margin: 8px 4px; background: var(--panel-line); }
+    .f3-nav-cont { position: fixed !important; width: auto !important; top: 36px !important; left: 10px !important; height: 40px !important; align-items: center !important; }
+    .f3-history-controls { display: flex; align-items: center; padding: 0 4px !important; }
+    .relationship-status { margin: 14px 0; padding: 10px; border: 1px solid var(--panel-line); border-radius: 3px; }
+    .relationship-status legend { padding: 0 5px; font-size: 12px; color: var(--text-dim); }
     .relationship-status label { display: block; margin: 7px 0; font-size: 13px; }
+    .relationship-status input[type="checkbox"]:checked + * { color: var(--line-unconfirmed); }
+
+    /* Cards: read like a record card, not an avatar tile - flat, sharp-cornered, no gradients
+       or drop shadows, gender colour as a quiet fill rather than a badge. Names carry the
+       distinguishing serif; everything else (labels, dates, form fields) stays in the plain
+       body face, so the type itself marks the difference between "a person" and "data about
+       a person". */
+    .f3 div.card-rect, .f3 div.card-image-rect { border-radius: 2px; }
+    .f3 div.card > div { box-shadow: none; }
+    .f3 div.card-main .card-inner, .f3 div.card:hover .card-inner { box-shadow: 0 2px 10px 0 rgba(0,0,0,.55); }
+    .f3 div.card-main .card-inner { outline-color: var(--text); }
+    .f3 div.card .card-label { font-family: var(--font-display); }
+    /* One accent, one meaning: this is what "not confirmed yet" looks like everywhere -
+       a dashed link between two people, or a floating candidate not yet linked to anyone. */
+    .f3 .link.link-unconfirmed { stroke: var(--line-unconfirmed); }
+    .f3 div.card-floating .card-inner { border-color: var(--line-unconfirmed); }
+    /* Placeholders ("Unknown father", a new/unsaved relative) must read as not-a-real-person
+       at a glance, not just by their dashed border. */
+    .f3 div.card-unknown .card-label, .f3 div.card-to-add .card-label, .f3 div.card-new-rel .card-label {
+      font-style: italic; opacity: .75;
+    }
+
+    /* Edit panel */
+    .f3-form-cont { background: var(--panel); border-left: 1px solid var(--panel-line); box-shadow: none; }
+    .f3-form { font-family: var(--font-body); }
+    .f3-form-title { font-family: var(--font-display); font-size: 19px; letter-spacing: .01em; }
+    .f3-form input[type="text"], .f3-form textarea, .f3-form select {
+      background: var(--ink); border-color: var(--panel-line); border-radius: 2px; color: var(--text);
+    }
+    .f3-form input[type="text"]:focus, .f3-form textarea:focus, .f3-form select:focus {
+      box-shadow: 0 0 0 2px rgba(184,130,58,.35); border-color: var(--line-unconfirmed);
+    }
+    .f3-form button { border-radius: 2px; }
+    .f3-form button[type="submit"] { background-color: #5f7a52; }
+    .f3-cancel-btn { background-color: var(--panel-line); color: var(--text); }
+    .f3-form .f3-delete-btn { border-color: #c0524a; color: #c0524a; }
+    .f3-delete-btn:hover { background-color: #c0524a; border-color: #c0524a; }
+
     /* Semi-public app: attribution, licence and a way to reach an admin all need to be
        visible, not buried - this isn't decoration, it's what the MIT licence on the
        upstream library requires ("The above copyright notice and this permission notice
@@ -37,7 +107,7 @@
        fixed/opaque over the right ~330px of the screen and is open by default, so a
        low-z-index right-aligned footer renders mostly UNDERNEATH it - only "GitHub" was
        ever actually visible, everything after was hidden behind the panel. */
-    footer { position: fixed; bottom: 0; left: 0; right: 0; padding: 4px 10px; font-size: 11px; color: rgba(255,255,255,.45); background: rgba(0,0,0,.85); z-index: 20; text-align: right; box-sizing: border-box; }
+    footer { position: fixed; bottom: 0; left: 0; right: 0; padding: 4px 10px; font-size: 11px; color: var(--text-dim); background: var(--panel); z-index: 20; text-align: right; box-sizing: border-box; border-top: 1px solid var(--panel-line); }
     footer a { color: inherit; }
     footer .sep { margin: 0 6px; opacity: .5; }
     /* Print: this app is a fixed-viewport canvas (100vh), which without help prints only
@@ -47,7 +117,7 @@
        that down to paper size. All of this app's own floating chrome is hidden - none of it
        is meaningful on paper. */
     @media print {
-      header, #viewModeButton, #focusMeButton, #printButton, #exportButton, #saveStatus, .f3-nav-cont, footer { display: none !important; }
+      header, .toolbar, #saveStatus, .f3-nav-cont, footer { display: none !important; }
       body { padding-top: 0 !important; }
       body, #FamilyChart { background: #fff !important; }
       html, body, #FamilyChart { height: auto !important; overflow: visible !important; }
@@ -55,13 +125,18 @@
   </style>
 </head>
 <body>
-<header>Lunt Family Tree</header>
-<button type="button" id="viewModeButton">View full tree</button>
-<button type="button" id="focusMeButton" hidden>Focus on me</button>
-<button type="button" id="printButton">Print</button>
-<button type="button" id="exportButton">Export HTML</button>
-<div id="saveStatus"></div>
-<div id="FamilyChart" class="f3" style="width:100%;height:calc(100vh - 36px);background-color:rgb(33,33,33);color:#fff;"></div>
+<header>
+  <span class="title">Lunt Family Tree</span>
+  <div id="saveStatus"></div>
+</header>
+<div class="toolbar">
+  <button type="button" id="viewModeButton">View full tree</button>
+  <button type="button" id="focusMeButton" hidden>Focus on me</button>
+  <span class="sep"></span>
+  <button type="button" id="printButton">Print</button>
+  <button type="button" id="exportButton">Export HTML</button>
+</div>
+<div id="FamilyChart" class="f3" style="width:100%;height:calc(100vh - 76px);"></div>
 <footer>
   © 2026 Rodney Lunt
   <span class="sep">·</span>
@@ -269,8 +344,12 @@ async function exportStandaloneHtml(data) {
 <meta charset="UTF-8">
 <title>Family Tree (exported ${new Date().toISOString().slice(0, 10)})</title>
 <style>${familyChartCss}
-body { font-family: 'Arial', sans-serif; margin: 0; }
-#FamilyChart { width: 100%; height: 100vh; background-color: rgb(33,33,33); color: #fff; }
+.f3 { --female-color: #8a5a55; --male-color: #4a6670; --genderless-color: #6b6259; --background-color: #16130f; --text-color: #f2ede4; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+.f3 div.card .card-label { font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, 'Times New Roman', serif; }
+.f3 .link.link-unconfirmed { stroke: #b8823a; }
+.f3 div.card-floating .card-inner { border-color: #b8823a; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0; }
+#FamilyChart { width: 100%; height: 100vh; background-color: #16130f; color: #f2ede4; }
 </style>
 </head>
 <body>
@@ -322,7 +401,7 @@ async function flushSaves() {
       if (!res.ok) throw new Error(`save failed: ${res.status}`)
     } catch (err) {
       console.error(err)
-      setStatus('Save failed — your last change may not have persisted', true)
+      setStatus('Save failed, your last change may not have persisted', true)
       saveRunning = false
       return
     }
