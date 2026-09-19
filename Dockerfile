@@ -3,7 +3,10 @@ FROM node:22-slim AS builder
 WORKDIR /repo
 RUN corepack enable
 COPY package.json pnpm-lock.yaml* ./
-RUN corepack pnpm install --frozen-lockfile
+# --ignore-scripts: skips postinstall scripts for cypress/esbuild, which pnpm's newer
+# "approve-builds" gate otherwise hard-fails on non-interactively. Safe here specifically
+# because the actual build step below runs rollup directly (build.js), never vite/cypress.
+RUN corepack pnpm install --frozen-lockfile --ignore-scripts
 COPY . .
 RUN corepack pnpm build
 

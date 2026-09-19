@@ -30,6 +30,7 @@ async function readTree() {
 }
 
 async function writeTree(data) {
+  await fs.mkdir(path.dirname(DATA_FILE), { recursive: true })  // don't assume the volume mount already created this; a missing dir must not lose an edit
   const tmp = `${DATA_FILE}.tmp`
   await fs.writeFile(tmp, JSON.stringify(data, null, 2))  // write to a temp file first
   await fs.rename(tmp, DATA_FILE)  // atomic on the same filesystem, so a crash mid-write can't corrupt the real file
