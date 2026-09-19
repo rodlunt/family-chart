@@ -9,10 +9,11 @@
   <style>
     body { font-family: 'Arial', sans-serif; margin: 0; }
     #saveStatus { position: absolute; top: 8px; left: 8px; z-index: 10; color: #fff; font-size: 13px; background: rgba(0,0,0,.5); padding: 4px 8px; border-radius: 4px; }
+    #showUnconnectedControl { display: block; margin: 8px 0; font-size: 14px; }
   </style>
 </head>
 <body>
-<label style="position:absolute;top:8px;right:8px;z-index:10;color:#fff;font-size:14px;background:rgba(0,0,0,.5);padding:4px 8px;border-radius:4px;">
+<label id="showUnconnectedControl">
   <input type="checkbox" id="showUnconnectedToggle" checked>
   Show unconnected people
 </label>
@@ -35,6 +36,7 @@ fetch('/api/tree')  // load whatever was last saved (or the library's own single
   .catch((err) => { console.error(err); setStatus('Failed to load tree', true) })
 
 function create(data) {
+  const showUnconnectedControl = document.getElementById('showUnconnectedControl')
   const f3Chart = f3.createChart('#FamilyChart', data)
     .setTransitionTime(1000)
     .setCardXSpacing(250)
@@ -57,6 +59,19 @@ function create(data) {
   f3Chart.updateTree({ initial: true })
   f3EditTree.open(f3Chart.getMainDatum())
   f3Chart.updateTree({ initial: true })
+
+  function placeShowUnconnectedControl() {
+    const deleteButtonRow = document.querySelector('.f3-delete-btn')?.parentElement
+    if (deleteButtonRow && showUnconnectedControl.previousElementSibling !== deleteButtonRow) {
+      deleteButtonRow.after(showUnconnectedControl)  // keep the display option in the edit panel, directly beneath the person-removal button
+    }
+  }
+
+  placeShowUnconnectedControl()
+  new MutationObserver(placeShowUnconnectedControl).observe(document.getElementById('FamilyChart'), {
+    childList: true,
+    subtree: true,
+  })  // the library rebuilds the form when another person is opened, so put the same control back each time
 
   document.getElementById('showUnconnectedToggle').addEventListener('change', (e) => {
     f3Chart.setShowUnconnected(e.target.checked)  // display-only; never touches saved data
