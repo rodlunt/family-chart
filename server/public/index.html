@@ -9,21 +9,23 @@
   <style>
     body { font-family: 'Arial', sans-serif; margin: 0; }
     #saveStatus { position: absolute; top: 52px; left: 8px; z-index: 10; color: #fff; font-size: 13px; background: rgba(0,0,0,.5); padding: 4px 8px; border-radius: 4px; }
-    #showUnconnectedControl { display: block; margin: 8px 0; font-size: 14px; }
+    #viewModeButton { position: absolute; top: 8px; left: 105px; z-index: 10; color: #fff; background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.4); border-radius: 4px; padding: 7px 10px; cursor: pointer; }
+    .relationship-status { margin: 14px 0; padding: 10px; border: 1px solid rgba(255,255,255,.25); border-radius: 4px; }
+    .relationship-status legend { padding: 0 5px; font-size: 13px; }
+    .relationship-status label { display: block; margin: 7px 0; font-size: 13px; }
   </style>
 </head>
 <body>
-<label id="showUnconnectedControl">
-  <input type="checkbox" id="showUnconnectedToggle" checked>
-  Show unconnected people
-</label>
+<button type="button" id="viewModeButton">View full tree</button>
 <div id="saveStatus"></div>
 <div id="FamilyChart" class="f3" style="width:100%;height:100vh;background-color:rgb(33,33,33);color:#fff;"></div>
 
 <script src="/vendor/d3.min.js"></script>
 <script src="/vendor/family-chart.js"></script>
 <script>
-const saveStatus = document.getElementById('saveStatus')  // small text indicator so a save failure is visible, not silent
+const saveStatus = document.getElementById('saveStatus')
+const viewModeButton = document.getElementById('viewModeButton')
+let selectedPersonId = null  // small text indicator so a save failure is visible, not silent
 
 function setStatus(text, isError) {
   saveStatus.textContent = text
@@ -36,11 +38,11 @@ fetch('/api/tree')  // load whatever was last saved (or the library's own single
   .catch((err) => { console.error(err); setStatus('Failed to load tree', true) })
 
 function create(data) {
-  const showUnconnectedControl = document.getElementById('showUnconnectedControl')
   const f3Chart = f3.createChart('#FamilyChart', data)
     .setTransitionTime(1000)
     .setCardXSpacing(250)
     .setCardYSpacing(150)
+    .setShowUnconnected(false)
 
   const displayName = (d) => {
     const legalGivenNames = [d.data['first name'], d.data['middle name']].filter(Boolean).join(' ')
@@ -60,48 +62,119 @@ function create(data) {
       title: 'Link to existing person',
       select_placeholder: 'Select a person',
     })
+    .setOnFormCreation(({ cont, form_creator }) => {
+      selectedPersonId = form_creator.datum_id
+      updateViewModeButton()
+      addRelationshipStatusControls(cont, form_creator.datum_id)
+    })
     .setOnChange(() => save(f3EditTree.exportData()))  // fires after every add/edit/delete/link, so nothing is ever lost between visits
 
   f3Chart.updateTree({ initial: true })
   f3EditTree.open(f3Chart.getMainDatum())
   f3Chart.updateTree({ initial: true })
 
-  function placeShowUnconnectedControl() {
-    const deleteButtonRow = document.querySelector('.f3-delete-btn')?.parentElement
-    if (deleteButtonRow && showUnconnectedControl.previousElementSibling !== deleteButtonRow) {
-      deleteButtonRow.after(showUnconnectedControl)  // keep the display option in the edit panel, directly beneath the person-removal button
+  let fullTree = false
+  viewModeButton.addEventListener('click', () => {
+    fullTree = !fullTree
+    if (selectedPersonId) f3Chart.store.updateMainId(selectedPersonId)
+    f3Chart.setShowUnconnected(fullTree)
+    f3Chart.updateTree({ tree_position: 'fit' })
+    updateViewModeButton()
+  })
+
+  function updateViewModeButton() {
+    const selected = data.find(d => d.id === selectedPersonId)
+    viewModeButton.textContent = fullTree && selected ? `Focus on ${displayName(selected)}` : 'View full tree'
+  }
+
+  function addRelationshipStatusControls(container, personId) {
+    const person = data.find(d => d.id === personId)
+    const form = container.querySelector('form')
+    if (!person || !form) return
+    const relationshipTypes = [
+      { key: 'parents', inverse: 'children', label: 'Parent' },
+      { key: 'spouses', inverse: 'spouses', label: 'Spouse' },
+      { key: 'children', inverse: 'parents', label: 'Child' },
+    ]
+    const rows = []
+    relationshipTypes.forEach(type => {
+      const confirmed = person.rels[type.key] || []
+      const unconfirmed = person.unconfirmed_rels?.[type.key] || []
+      ;[...new Set([...confirmed, ...unconfirmed])].forEach(relativeId => {
+        const relative = data.find(d => d.id === relativeId)
+        if (relative && !relative.to_add) rows.push({ type, relative, unconfirmed: unconfirmed.includes(relativeId) })
+      })
+    })
+    if (!rows.length) return
+
+    const fieldset = document.createElement('fieldset')
+    fieldset.className = 'relationship-status'
+    const legend = document.createElement('legend')
+    legend.textContent = 'Unconfirmed relationships (dashed line)'
+    fieldset.appendChild(legend)
+    rows.forEach(row => {
+      const label = document.createElement('label')
+      const checkbox = document.createElement('input')
+      checkbox.type = 'checkbox'
+      checkbox.checked = row.unconfirmed
+      checkbox.addEventListener('change', () => {
+        setRelationshipUnconfirmed(person, row.relative, row.type.key, row.type.inverse, checkbox.checked)
+        const exported = f3EditTree.exportData()
+        save(exported)
+        f3Chart.updateTree({})
+      })
+      label.append(checkbox, ` ${row.type.label}: ${displayName(row.relative)}`)
+      fieldset.appendChild(label)
+    })
+    form.querySelector('hr')?.before(fieldset)
+  }
+
+  function setRelationshipUnconfirmed(person, relative, kind, inverseKind, unconfirmed) {
+    move(person, relative.id, kind, unconfirmed)
+    move(relative, person.id, inverseKind, unconfirmed)
+
+    function move(owner, relativeId, relationKind, toUnconfirmed) {
+      owner.rels[relationKind] = (owner.rels[relationKind] || []).filter(id => id !== relativeId)
+      owner.unconfirmed_rels ||= {}
+      owner.unconfirmed_rels[relationKind] = (owner.unconfirmed_rels[relationKind] || []).filter(id => id !== relativeId)
+      const target = toUnconfirmed ? owner.unconfirmed_rels : owner.rels
+      target[relationKind] ||= []
+      target[relationKind].push(relativeId)
     }
   }
 
-  placeShowUnconnectedControl()
-  new MutationObserver(placeShowUnconnectedControl).observe(document.getElementById('FamilyChart'), {
-    childList: true,
-    subtree: true,
-  })  // the library rebuilds the form when another person is opened, so put the same control back each time
-
-  document.getElementById('showUnconnectedToggle').addEventListener('change', (e) => {
-    f3Chart.setShowUnconnected(e.target.checked)  // display-only; never touches saved data
-    f3Chart.updateTree({})
-  })
 }
 
-let saveInFlight = null  // tracks the current PUT so a fast second edit doesn't race an earlier save
+let pendingSave = null  // newest unsaved snapshot; replacing this makes rapid edits explicitly last-write-wins
+let saveRunning = false
 
 function save(data) {
+  pendingSave = data
   setStatus('Saving…')
-  saveInFlight = fetch('/api/tree', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-    .then((res) => {
+  if (!saveRunning) flushSaves()
+}
+
+async function flushSaves() {
+  saveRunning = true
+  while (pendingSave) {
+    const snapshot = pendingSave
+    pendingSave = null
+    try {
+      const res = await fetch('/api/tree', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(snapshot),
+      })
       if (!res.ok) throw new Error(`save failed: ${res.status}`)
-      setStatus('Saved')
-    })
-    .catch((err) => {
+    } catch (err) {
       console.error(err)
-      setStatus('Save failed — your last change may not have persisted', true)  // deliberately loud: a silent failed save is how real edits get lost
-    })
+      setStatus('Save failed — your last change may not have persisted', true)
+      saveRunning = false
+      return
+    }
+  }
+  saveRunning = false
+  setStatus('Saved')
 }
 </script>
 </body>

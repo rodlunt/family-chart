@@ -9,6 +9,11 @@ export interface Datum {
     spouses: string[];
     children: string[];
   };
+  unconfirmed_rels?: {
+    parents?: string[];
+    spouses?: string[];
+    children?: string[];
+  };
   [key: string]: any;
 }
 

@@ -11,7 +11,7 @@ export default function updateLinks(svg: SVGElement, tree: Tree, props: ViewProp
     createLinks(d, tree.is_horizontal).forEach(l => acc[l.id] = l)
     return acc
   }, {})
-  const links_data: Link[] = Object.values(links_data_dct)
+  const links_data: Link[] = [...Object.values(links_data_dct), ...createUnconfirmedLinks(tree)]
   const link: LinkSelection = d3
     .select(svg)
     .select(".links_view")
@@ -33,7 +33,7 @@ export default function updateLinks(svg: SVGElement, tree: Tree, props: ViewProp
   }
 
   function linkUpdate(this: SVGPathElement, d: Link) {
-    const path = d3.select(this);
+    const path = d3.select(this).classed("link-unconfirmed", !!d.unconfirmed);
     const delay = props.initial ? calculateDelay(tree, d, props.transition_time!) : 0
     path.transition('path').duration(props.transition_time!).delay(delay).attr("d", createPath(d)).style("opacity", 1)
   }
@@ -54,4 +54,41 @@ function createPath(d: Link, is_: boolean = false) {
 
   if (!d.curve) return line(path_data)
   else return lineCurve(path_data)
+}
+
+function createUnconfirmedLinks(tree: Tree): Link[] {
+  const visible = new Map<string, Tree["data"][number]>()
+  tree.data.forEach(d => { if (!visible.has(d.data.id)) visible.set(d.data.id, d) })
+  const seen = new Set<string>()
+  const links: Link[] = []
+
+  tree.data_stash.forEach(person => {
+    const relations = person.unconfirmed_rels || {}
+    ;(["parents", "spouses", "children"] as const).forEach(kind => {
+      ;(relations[kind] || []).forEach(relative_id => {
+        const key = [person.id, relative_id].sort().join("--")
+        if (seen.has(key)) return
+        seen.add(key)
+        const source = visible.get(person.id)
+        const target = visible.get(relative_id)
+        if (!source || !target) return
+        const mid = tree.is_horizontal ? (source.x + target.x) / 2 : (source.y + target.y) / 2
+        const points = tree.is_horizontal
+          ? [[source.x, source.y], [mid, source.y], [mid, target.y], [target.x, target.y]]
+          : [[source.x, source.y], [source.x, mid], [target.x, mid], [target.x, target.y]]
+        links.push({
+          d: points as [number, number][],
+          _d: () => [[source.x, source.y], [source.x, source.y]],
+          curve: false,
+          id: `unconfirmed--${key}`,
+          depth: 0,
+          is_ancestry: false,
+          source,
+          target,
+          unconfirmed: true,
+        })
+      })
+    })
+  })
+  return links
 }

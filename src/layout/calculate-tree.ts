@@ -81,8 +81,7 @@ export default function calculateTree(data: Data, {
   // setupFromTo(tree)
   if (duplicate_branch_toggle) handleDuplicateSpouseToggle(tree)
   if (show_unconnected) placeUnconnected(tree, data_stash, node_separation, level_separation, main.id)  // append floating cards for anyone not reachable from main, unless turned off
-  const fit_tree = tree.filter(d => !d.floating)  // keep disconnected mini-trees pannable without shrinking the main family during the initial auto-fit
-  const dim = calculateTreeDim(fit_tree.length ? fit_tree : tree, node_separation, level_separation)
+  const dim = calculateTreeDim(tree, node_separation, level_separation)  // focused mode hides disconnected branches; full-tree mode includes and fits them
 
   return {data: tree, data_stash, dim, main_id: main.id, is_horizontal}
 
@@ -259,29 +258,43 @@ export default function calculateTree(data: Data, {
   }
 
   /**
-   * Lay out every family component that is disconnected from the main person as its own
-   * compact mini-tree. The previous implementation flattened every unreachable person into
-   * one long card grid, which hid real relationships inside those branches and forced the
-   * chart to zoom much farther out than their actual structure required.
+   * Lay out every person not represented in the focused hierarchy as compact supplemental
+   * mini-trees. This includes disconnected candidate families and collateral relatives that
+   * are related in the data but outside the library's ego-centric main-person traversal.
    */
   function placeUnconnected(tree:TreeDatum[], data_stash:Data, node_separation:number, level_separation:number, main_id:string) {
-    const reachable = getReachableIds(main_id, data_stash)  // everyone belonging to the main family component
-    const disconnected_ids = new Set(data_stash.filter(d => !reachable.has(d.id)).map(d => d.id))
+    const displayed_ids = new Set(tree.map(d => d.data.id))
+    const supplemental_ids = new Set(data_stash.filter(d => !displayed_ids.has(d.id)).map(d => d.id))
     const components:Data[] = []
     const visited = new Set<string>()
 
-    data_stash.filter(d => disconnected_ids.has(d.id) && !d.to_add).forEach(seed => {
+    data_stash.filter(d => supplemental_ids.has(d.id) && !d.to_add).forEach(seed => {
       if (visited.has(seed.id)) return
-      const component_ids = getReachableIds(seed.id, data_stash)
-      const component = data_stash.filter(d => disconnected_ids.has(d.id) && component_ids.has(d.id))
+      const component_ids = getReachableWithin(seed.id, supplemental_ids)
+      const component = data_stash.filter(d => component_ids.has(d.id))
       component.forEach(d => visited.add(d.id))
       components.push(component)
     })
     if (!components.length) return
 
+    function getReachableWithin(start_id:string, allowed:Set<string>) {
+      const found = new Set<string>()
+      const queue = [start_id]
+      while (queue.length) {
+        const id = queue.pop() as string
+        if (found.has(id) || !allowed.has(id)) continue
+        found.add(id)
+        const person = data_stash.find(d => d.id === id)
+        if (!person) continue
+        ;[...(person.rels.parents || []), ...(person.rels.spouses || []), ...(person.rels.children || [])]
+          .forEach(relative_id => { if (allowed.has(relative_id)) queue.push(relative_id) })
+      }
+      return found
+    }
+
     const component_layouts = components.map(component => {
       const real_people = component.filter(d => !d.to_add)
-      const roots = real_people.filter(d => !(d.rels.parents || []).some(id => disconnected_ids.has(id)))
+      const roots = real_people.filter(d => !(d.rels.parents || []).some(id => supplemental_ids.has(id)))
       const root = roots.sort((a, b) => (b.rels.children || []).length - (a.rels.children || []).length)[0] || real_people[0]
       const component_tree = calculateTree(component, {
         main_id: root.id,

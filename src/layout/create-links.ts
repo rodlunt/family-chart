@@ -11,6 +11,7 @@ export interface Link {
   source: TreeDatum | TreeDatum[]
   target: TreeDatum | TreeDatum[]
   spouse?: boolean
+  unconfirmed?: boolean
 }
 
 type LinkPoint = {x: number, y: number, _x?: number, _y?: number}

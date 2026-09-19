@@ -26,6 +26,10 @@
 .f3 svg.main_svg text {
   fill: currentColor;
 }
+.f3 .link.link-unconfirmed {
+  stroke-dasharray: 8 6;
+  stroke-width: 2;
+}
 .f3 rect.card-female, .f3 .card-female .card-body-rect, .f3 .card-female .text-overflow-mask {
   fill: var(--female-color);
 }
