@@ -293,10 +293,20 @@ export default function calculateTree(data: Data, {
     }
 
     const component_layouts = components.map(component => {
-      const real_people = component.filter(d => !d.to_add)
-      const roots = real_people.filter(d => !(d.rels.parents || []).some(id => supplemental_ids.has(id)))
+      const component_ids = new Set(component.map(d => d.id))
+      const layout_component = component.map(d => ({
+        ...d,
+        data: {...d.data},
+        rels: {
+          parents: (d.rels.parents || []).filter(id => component_ids.has(id)),
+          spouses: (d.rels.spouses || []).filter(id => component_ids.has(id)),
+          children: (d.rels.children || []).filter(id => component_ids.has(id)),
+        },
+      })) as Data  // isolate layout from relatives represented in another mini-tree or the focused hierarchy
+      const real_people = layout_component.filter(d => !d.to_add)
+      const roots = real_people.filter(d => !(d.rels.parents || []).some(id => component_ids.has(id)))
       const root = roots.sort((a, b) => (b.rels.children || []).length - (a.rels.children || []).length)[0] || real_people[0]
-      const component_tree = calculateTree(component, {
+      const component_tree = calculateTree(layout_component, {
         main_id: root.id,
         node_separation,
         level_separation,
@@ -310,8 +320,10 @@ export default function calculateTree(data: Data, {
         show_unconnected: false,
       }).data
 
-      component.forEach(d => d.main = false)  // a mini-tree root is not the application main person
-      component_tree.forEach(d => d.floating = true)
+      component_tree.forEach(d => {
+        d.data = data_stash.find(original => original.id === d.data.id) || d.data  // editing must target the real store record, not the isolated layout clone
+        d.floating = true
+      })
       const x_extent = d3.extent(component_tree, d => d.x) as [number, number]
       const y_extent = d3.extent(component_tree, d => d.y) as [number, number]
       return {
