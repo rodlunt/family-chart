@@ -56,6 +56,13 @@ export function handleLinkRel(updated_datum: Datum, link_rel_id: Datum['id'], st
   store_data.splice(store_data.findIndex(d => d.id === new_rel_id), 1)
 }
 
+// father/son slots only make sense linked to a man, mother/daughter only to a woman; a
+// spouse isn't gender-locked (a new spouse placeholder's gender is freely editable too, see
+// createRelsToAdd in calculate-tree.ts), so that slot is deliberately left unfiltered here.
+const REQUIRED_GENDER: Partial<Record<NonNullable<Datum['_new_rel_data']>['rel_type'], Datum['data']['gender']>> = {
+  father: 'M', son: 'M', mother: 'F', daughter: 'F',
+}
+
 export function getLinkRelOptions(datum: Datum, data: Data) {
   const rel_datum = datum._new_rel_data ? data.find(d => d.id === datum._new_rel_data.rel_id) : null
   const ancestry_ids = getAncestry(datum, data)
@@ -64,11 +71,13 @@ export function getLinkRelOptions(datum: Datum, data: Data) {
     if (!rel_datum) throw new Error('Rel datum not found')
     progeny_ids.push(...getProgeny(rel_datum, data))
   }
+  const required_gender = datum._new_rel_data && REQUIRED_GENDER[datum._new_rel_data.rel_type]
 
   return data.filter(d => d.id !== datum.id && d.id !== rel_datum?.id && !d._new_rel_data && !d.to_add && !d.unknown)
     .filter(d => !ancestry_ids.includes(d.id))
     .filter(d => !progeny_ids.includes(d.id))
     .filter(d => !(d.rels.spouses || []).includes(datum.id))
+    .filter(d => !required_gender || d.data.gender === required_gender)
 
 
   function getAncestry(datum: Datum, data_stash: Data) {
