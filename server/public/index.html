@@ -11,9 +11,14 @@
     #saveStatus { position: absolute; bottom: 8px; left: 8px; z-index: 10; color: #fff; font-size: 13px; background: rgba(0,0,0,.5); padding: 4px 8px; border-radius: 4px; }
     /* The library's own undo/redo controls render with no background or border at all (see
        .f3-history-controls in family-chart.css) - two small icon-only buttons that easily
-       read as a stray rendering artefact rather than a real, intentional control. Giving them
-       the same dark-box treatment as this page's own buttons makes clear what they are. */
-    .f3-nav-cont { background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.4); border-radius: 4px; width: auto !important; top: 8px !important; left: 8px !important; }
+       read as a stray rendering artefact rather than a real, intentional control. Giving
+       them the same dark-box treatment as this page's own buttons makes clear what they
+       are. This box goes on .f3-history-controls itself, NOT the shared .f3-nav-cont
+       wrapper: history.ts already sets opacity:0 on .f3-history-controls when there's
+       nothing to undo/redo (true at page load), and styling the wrapper instead would keep
+       an empty dark box visible regardless - the exact stray-artefact look this is fixing. */
+    .f3-nav-cont { width: auto !important; top: 8px !important; left: 8px !important; }
+    .f3-history-controls { background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.4); border-radius: 4px; }
     #viewModeButton { position: absolute; top: 8px; left: 105px; z-index: 10; color: #fff; background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.4); border-radius: 4px; padding: 7px 10px; cursor: pointer; }
     #focusMeButton { position: absolute; top: 8px; right: 8px; z-index: 10; color: #fff; background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.4); border-radius: 4px; padding: 7px 10px; cursor: pointer; }
     .relationship-status { margin: 14px 0; padding: 10px; border: 1px solid rgba(255,255,255,.25); border-radius: 4px; }
