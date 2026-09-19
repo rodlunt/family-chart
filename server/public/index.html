@@ -10,6 +10,7 @@
     body { font-family: 'Arial', sans-serif; margin: 0; }
     #saveStatus { position: absolute; top: 52px; left: 8px; z-index: 10; color: #fff; font-size: 13px; background: rgba(0,0,0,.5); padding: 4px 8px; border-radius: 4px; }
     #viewModeButton { position: absolute; top: 8px; left: 285px; z-index: 10; color: #fff; background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.4); border-radius: 4px; padding: 7px 10px; cursor: pointer; }
+    #focusMeButton { position: absolute; top: 8px; right: 8px; z-index: 10; color: #fff; background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.4); border-radius: 4px; padding: 7px 10px; cursor: pointer; }
     #upLevelControl { position: absolute; top: 8px; left: 105px; z-index: 11; color: #fff; background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.4); border-radius: 4px; }
     #upLevelControl summary { padding: 7px 10px; cursor: pointer; list-style: none; }
     #upLevelControl summary::-webkit-details-marker { display: none; }
@@ -27,6 +28,7 @@
   <div id="upLevelOptions"></div>
 </details>
 <button type="button" id="viewModeButton">View full tree</button>
+<button type="button" id="focusMeButton" hidden>Focus on me</button>
 <div id="saveStatus"></div>
 <div id="FamilyChart" class="f3" style="width:100%;height:100vh;background-color:rgb(33,33,33);color:#fff;"></div>
 
@@ -35,18 +37,25 @@
 <script>
 const saveStatus = document.getElementById('saveStatus')
 const viewModeButton = document.getElementById('viewModeButton')
+const focusMeButton = document.getElementById('focusMeButton')
 const upLevelControl = document.getElementById('upLevelControl')
 const upLevelOptions = document.getElementById('upLevelOptions')
 let selectedPersonId = null  // small text indicator so a save failure is visible, not silent
+let loginPersonId = null
 
 function setStatus(text, isError) {
   saveStatus.textContent = text
   saveStatus.style.color = isError ? '#f88' : '#8f8'
 }
 
-fetch('/api/tree')  // load whatever was last saved (or the library's own single-person default, on first run)
-  .then((res) => res.json())
-  .then((data) => create(data))
+Promise.all([
+  fetch('/api/tree').then((res) => res.json()),
+  fetch('/api/me').then((res) => res.json()),
+])
+  .then(([data, identity]) => {
+    loginPersonId = identity.personId
+    create(data)
+  })
   .catch((err) => { console.error(err); setStatus('Failed to load tree', true) })
 
 function create(data) {
@@ -86,6 +95,20 @@ function create(data) {
   f3Chart.updateTree({ initial: true })
   f3EditTree.open(f3Chart.getMainDatum())
   f3Chart.updateTree({ initial: true })
+
+  focusMeButton.hidden = !loginPersonId || !data.some(d => d.id === loginPersonId)
+  focusMeButton.addEventListener('click', () => {
+    const me = data.find(d => d.id === loginPersonId)
+    if (!me) return
+    selectedPersonId = me.id
+    fullTree = false
+    f3Chart.store.updateMainId(me.id)
+    f3Chart.setShowUnconnected(false)
+    f3Chart.updateTree({ tree_position: 'fit' })
+    f3EditTree.open(me)
+    updateViewModeButton()
+    updateUpLevelControl()
+  })
 
   viewModeButton.addEventListener('click', () => {
     fullTree = !fullTree

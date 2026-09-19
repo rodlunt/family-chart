@@ -11,6 +11,19 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))  // this file's o
 const PUBLIC_DIR = path.join(__dirname, 'public')  // static frontend files live here
 const DATA_FILE = process.env.DATA_FILE || '/data/tree.json'  // persisted tree data; /data is the mounted volume in production
 const PORT = process.env.PORT || 3000
+const AUTH_USER_PERSON_IDS = { rodney: "rodney-lunt", pauline: "pauline-leask" }
+
+function authenticatedUsername(req) {
+  const forwarded = req.headers["x-authenticated-user"]
+  if (typeof forwarded === "string" && forwarded) return forwarded.toLowerCase()
+  const authorization = req.headers.authorization || ""
+  if (!authorization.startsWith("Basic ")) return null
+  try {
+    return Buffer.from(authorization.slice(6), "base64").toString("utf8").split(":", 1)[0].toLowerCase()
+  } catch {
+    return null
+  }
+}
 
 // seeded the first time the app runs, before anyone has added themselves
 const DEFAULT_TREE = [{
@@ -60,6 +73,13 @@ const server = http.createServer(async (req, res) => {
     if (req.url === '/healthz') {  // liveness probe target for the container healthcheck
       res.writeHead(200)
       res.end('ok')
+      return
+    }
+
+    if (req.url === '/api/me' && req.method === 'GET') {
+      const username = authenticatedUsername(req)
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+      res.end(JSON.stringify({ personId: AUTH_USER_PERSON_IDS[username] || null }))
       return
     }
 

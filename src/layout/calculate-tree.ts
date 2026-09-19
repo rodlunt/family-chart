@@ -264,6 +264,7 @@ export default function calculateTree(data: Data, {
    */
   function placeUnconnected(tree:TreeDatum[], data_stash:Data, node_separation:number, level_separation:number, main_id:string) {
     const displayed_ids = new Set(tree.map(d => d.data.id))
+    const confirmed_reachable_ids = getReachableIds(main_id, data_stash)
     const supplemental_ids = new Set(data_stash.filter(d => !displayed_ids.has(d.id)).map(d => d.id))
     const components:Data[] = []
     const visited = new Set<string>()
@@ -322,16 +323,34 @@ export default function calculateTree(data: Data, {
 
       component_tree.forEach(d => {
         d.data = data_stash.find(original => original.id === d.data.id) || d.data  // editing must target the real store record, not the isolated layout clone
-        d.floating = true
+        d.floating = !confirmed_reachable_ids.has(d.data.id)
       })
       const x_extent = d3.extent(component_tree, d => d.x) as [number, number]
       const y_extent = d3.extent(component_tree, d => d.y) as [number, number]
+      const confirmed_anchor = component.flatMap(person =>
+        (["parents", "spouses", "children"] as const).flatMap(kind =>
+          (person.rels[kind] || [])
+            .filter(relative_id => displayed_ids.has(relative_id))
+            .map(relative_id => ({person_id: person.id, relative_id, kind}))
+        )
+      )[0]
+      const unconfirmed_anchor = component.flatMap(person => {
+        const relations = person.unconfirmed_rels || {}
+        return (["parents", "spouses", "children"] as const).flatMap(kind =>
+          (relations[kind] || [])
+            .filter(relative_id => displayed_ids.has(relative_id))
+            .map(relative_id => ({person_id: person.id, relative_id, kind}))
+        )
+      })[0]
+      const anchor = confirmed_anchor || unconfirmed_anchor
+      if (anchor) component_tree.forEach(d => d.floating = false)
       return {
         nodes: component_tree,
         min_x: x_extent[0],
         min_y: y_extent[0],
         width: x_extent[1] - x_extent[0] + node_separation,
         height: y_extent[1] - y_extent[0] + level_separation,
+        anchor,
       }
     })
 
@@ -353,15 +372,35 @@ export default function calculateTree(data: Data, {
         cursor_y += row_height + gap_y
         row_height = 0
       }
-      const dx = cursor_x - component.min_x + node_separation / 2
-      const dy = cursor_y - component.min_y + level_separation / 2
+      let dx = cursor_x - component.min_x + node_separation / 2
+      let dy = cursor_y - component.min_y + level_separation / 2
+      const anchored_node = component.anchor && component.nodes.find(d => d.data.id === component.anchor!.person_id)
+      const related_node = component.anchor && tree.find(d => d.data.id === component.anchor!.relative_id)
+      if (component.anchor && anchored_node && related_node) {
+        const direction = component.anchor.kind === "parents" ? 1 : component.anchor.kind === "children" ? -1 : 0
+        if (is_horizontal) {
+          const desired_x = related_node.x + direction * level_separation
+          const occupied = tree.filter(d => Math.abs(d.x - desired_x) < level_separation / 2)
+          const desired_y = (occupied.length ? Math.max(...occupied.map(d => d.y)) : related_node.y) + node_separation
+          dx = desired_x - anchored_node.x
+          dy = desired_y - anchored_node.y
+        } else {
+          const desired_y = related_node.y + direction * level_separation
+          const occupied = tree.filter(d => Math.abs(d.y - desired_y) < level_separation / 2)
+          const desired_x = (occupied.length ? Math.max(...occupied.map(d => d.x)) : related_node.x) + node_separation
+          dx = desired_x - anchored_node.x
+          dy = desired_y - anchored_node.y
+        }
+      }
       component.nodes.forEach(d => {
         shift(d, "x", dx); shift(d, "sx", dx); shift(d, "psx", dx)
         shift(d, "y", dy); shift(d, "sy", dy); shift(d, "psy", dy)
         tree.push(d)
       })
-      cursor_x += component.width + gap_x
-      row_height = Math.max(row_height, component.height)
+      if (!component.anchor) {
+        cursor_x += component.width + gap_x
+        row_height = Math.max(row_height, component.height)
+      }
     })
     data_stash.forEach(d => d.main = d.id === main_id)  // recursive mini-layouts temporarily set their own roots as main
 
