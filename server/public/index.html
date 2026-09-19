@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
+  <title>Family Tree</title>
+  <link rel="stylesheet" href="/vendor/family-chart.css">
+  <style>
+    body { font-family: 'Arial', sans-serif; margin: 0; }
+    #saveStatus { position: absolute; top: 8px; left: 8px; z-index: 10; color: #fff; font-size: 13px; background: rgba(0,0,0,.5); padding: 4px 8px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+<label style="position:absolute;top:8px;right:8px;z-index:10;color:#fff;font-size:14px;background:rgba(0,0,0,.5);padding:4px 8px;border-radius:4px;">
+  <input type="checkbox" id="showUnconnectedToggle" checked>
+  Show unconnected people
+</label>
+<div id="saveStatus"></div>
+<div id="FamilyChart" class="f3" style="width:100%;height:100vh;background-color:rgb(33,33,33);color:#fff;"></div>
+
+<script src="/vendor/d3.min.js"></script>
+<script src="/vendor/family-chart.js"></script>
+<script>
+const saveStatus = document.getElementById('saveStatus')  // small text indicator so a save failure is visible, not silent
+
+function setStatus(text, isError) {
+  saveStatus.textContent = text
+  saveStatus.style.color = isError ? '#f88' : '#8f8'
+}
+
+fetch('/api/tree')  // load whatever was last saved (or the library's own single-person default, on first run)
+  .then((res) => res.json())
+  .then((data) => create(data))
+  .catch((err) => { console.error(err); setStatus('Failed to load tree', true) })
+
+function create(data) {
+  const f3Chart = f3.createChart('#FamilyChart', data)
+    .setTransitionTime(1000)
+    .setCardXSpacing(250)
+    .setCardYSpacing(150)
+
+  const f3Card = f3Chart.setCard(f3.CardHtml)
+    .setCardDisplay([["first name", "last name"], ["birthday"]])
+
+  const f3EditTree = f3Chart.editTree()
+    .setFields(["first name", "last name", "birthday", "avatar"])
+    .setEditFirst(true)  // clicking a card opens its edit form directly, rather than an info-only view first
+    .setCardClickOpen(f3Card)
+    .setLinkExistingRelConfig({  // lets an "Add Father/Mother/Spouse/Son/Daughter" pick an existing person instead of only creating a new one
+      linkRelLabel: (d) => `${d.data['first name'] || ''} ${d.data['last name'] || ''}`.trim() || '(no name)',
+      title: 'Link to existing person',
+      select_placeholder: 'Select a person',
+    })
+    .setOnChange(() => save(f3EditTree.exportData()))  // fires after every add/edit/delete/link, so nothing is ever lost between visits
+
+  f3Chart.updateTree({ initial: true })
+  f3EditTree.open(f3Chart.getMainDatum())
+  f3Chart.updateTree({ initial: true })
+
+  document.getElementById('showUnconnectedToggle').addEventListener('change', (e) => {
+    f3Chart.setShowUnconnected(e.target.checked)  // display-only; never touches saved data
+    f3Chart.updateTree({})
+  })
+}
+
+let saveInFlight = null  // tracks the current PUT so a fast second edit doesn't race an earlier save
+
+function save(data) {
+  setStatus('Saving…')
+  saveInFlight = fetch('/api/tree', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+    .then((res) => {
+      if (!res.ok) throw new Error(`save failed: ${res.status}`)
+      setStatus('Saved')
+    })
+    .catch((err) => {
+      console.error(err)
+      setStatus('Save failed — your last change may not have persisted', true)  // deliberately loud: a silent failed save is how real edits get lost
+    })
+}
+</script>
+</body>
+</html>
