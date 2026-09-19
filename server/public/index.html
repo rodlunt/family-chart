@@ -7,8 +7,9 @@
   <title>Family Tree</title>
   <link rel="stylesheet" href="/vendor/family-chart.css">
   <style>
-    body { font-family: 'Arial', sans-serif; margin: 0; }
-    #saveStatus { position: absolute; bottom: 8px; left: 8px; z-index: 10; color: #fff; font-size: 13px; background: rgba(0,0,0,.5); padding: 4px 8px; border-radius: 4px; }
+    body { font-family: 'Arial', sans-serif; margin: 0; padding-top: 36px; }
+    header { position: fixed; top: 0; left: 0; right: 0; height: 36px; line-height: 36px; padding: 0 12px; background: rgba(0,0,0,.85); color: #fff; font-weight: bold; z-index: 20; border-bottom: 1px solid rgba(255,255,255,.15); box-sizing: border-box; }
+    #saveStatus { position: absolute; bottom: 30px; left: 8px; z-index: 10; color: #fff; font-size: 13px; background: rgba(0,0,0,.5); padding: 4px 8px; border-radius: 4px; }
     /* The library's own undo/redo controls render with no background or border at all (see
        .f3-history-controls in family-chart.css) - two small icon-only buttons that easily
        read as a stray rendering artefact rather than a real, intentional control. Giving
@@ -17,20 +18,63 @@
        wrapper: history.ts already sets opacity:0 on .f3-history-controls when there's
        nothing to undo/redo (true at page load), and styling the wrapper instead would keep
        an empty dark box visible regardless - the exact stray-artefact look this is fixing. */
-    .f3-nav-cont { width: auto !important; top: 8px !important; left: 8px !important; }
+    .f3-nav-cont { width: auto !important; top: 44px !important; left: 8px !important; }
     .f3-history-controls { background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.4); border-radius: 4px; }
-    #viewModeButton { position: absolute; top: 8px; left: 105px; z-index: 10; color: #fff; background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.4); border-radius: 4px; padding: 7px 10px; cursor: pointer; }
-    #focusMeButton { position: absolute; top: 8px; right: 8px; z-index: 10; color: #fff; background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.4); border-radius: 4px; padding: 7px 10px; cursor: pointer; }
+    #viewModeButton { position: absolute; top: 44px; left: 105px; z-index: 10; color: #fff; background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.4); border-radius: 4px; padding: 7px 10px; cursor: pointer; }
+    #focusMeButton { position: absolute; top: 44px; right: 8px; z-index: 10; color: #fff; background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.4); border-radius: 4px; padding: 7px 10px; cursor: pointer; }
+    #printButton, #exportButton { position: absolute; top: 80px; z-index: 10; color: #fff; background: rgba(0,0,0,.65); border: 1px solid rgba(255,255,255,.4); border-radius: 4px; padding: 7px 10px; cursor: pointer; }
+    #printButton { left: 8px; }
+    #exportButton { left: 90px; }
     .relationship-status { margin: 14px 0; padding: 10px; border: 1px solid rgba(255,255,255,.25); border-radius: 4px; }
     .relationship-status legend { padding: 0 5px; font-size: 13px; }
     .relationship-status label { display: block; margin: 7px 0; font-size: 13px; }
+    /* Semi-public app: attribution, licence and a way to reach an admin all need to be
+       visible, not buried - this isn't decoration, it's what the MIT licence on the
+       upstream library requires ("The above copyright notice and this permission notice
+       shall be included in all copies or substantial portions of the Software") plus basic
+       transparency about who runs this and which exact version is live. */
+    /* z-index 20 (matching header) and a solid background, not 1: the edit form panel is
+       fixed/opaque over the right ~330px of the screen and is open by default, so a
+       low-z-index right-aligned footer renders mostly UNDERNEATH it - only "GitHub" was
+       ever actually visible, everything after was hidden behind the panel. */
+    footer { position: fixed; bottom: 0; left: 0; right: 0; padding: 4px 10px; font-size: 11px; color: rgba(255,255,255,.45); background: rgba(0,0,0,.85); z-index: 20; text-align: right; box-sizing: border-box; }
+    footer a { color: inherit; }
+    footer .sep { margin: 0 6px; opacity: .5; }
+    /* Print: this app is a fixed-viewport canvas (100vh), which without help prints only
+       whatever fits one screen's worth of the current pan/zoom. The print button forces a
+       full-tree fit before printing so the whole thing is in view first; the browser's own
+       "fit to page width" print option (on by default in Chrome/Firefox) handles scaling
+       that down to paper size. All of this app's own floating chrome is hidden - none of it
+       is meaningful on paper. */
+    @media print {
+      header, #viewModeButton, #focusMeButton, #printButton, #exportButton, #saveStatus, .f3-nav-cont, footer { display: none !important; }
+      body { padding-top: 0 !important; }
+      body, #FamilyChart { background: #fff !important; }
+      html, body, #FamilyChart { height: auto !important; overflow: visible !important; }
+    }
   </style>
 </head>
 <body>
+<header>Lunt Family Tree</header>
 <button type="button" id="viewModeButton">View full tree</button>
 <button type="button" id="focusMeButton" hidden>Focus on me</button>
+<button type="button" id="printButton">Print</button>
+<button type="button" id="exportButton">Export HTML</button>
 <div id="saveStatus"></div>
-<div id="FamilyChart" class="f3" style="width:100%;height:100vh;background-color:rgb(33,33,33);color:#fff;"></div>
+<div id="FamilyChart" class="f3" style="width:100%;height:calc(100vh - 36px);background-color:rgb(33,33,33);color:#fff;"></div>
+<footer>
+  © 2026 Rodney Lunt
+  <span class="sep">·</span>
+  <a href="https://github.com/rodlunt/family-chart" target="_blank" rel="noopener">GitHub</a>
+  <span class="sep">·</span>
+  <a href="mailto:rod@lunt.au">rod@lunt.au</a>
+  <span class="sep">·</span>
+  <a href="https://github.com/rodlunt/family-chart/blob/master/LICENSE.txt" target="_blank" rel="noopener">MIT Licence</a>
+  <span class="sep">·</span>
+  based on <a href="https://github.com/donatso/family-chart" target="_blank" rel="noopener">donatso/family-chart</a>
+  <span class="sep">·</span>
+  <a id="commitLink" href="https://github.com/rodlunt/family-chart/commits/master" target="_blank" rel="noopener">version unknown</a>
+</footer>
 
 <script src="/vendor/d3.min.js"></script>
 <script src="/vendor/family-chart.js"></script>
@@ -38,6 +82,8 @@
 const saveStatus = document.getElementById('saveStatus')
 const viewModeButton = document.getElementById('viewModeButton')
 const focusMeButton = document.getElementById('focusMeButton')
+const printButton = document.getElementById('printButton')
+const exportButton = document.getElementById('exportButton')
 let selectedPersonId = null  // small text indicator so a save failure is visible, not silent
 let loginPersonId = null
 
@@ -45,6 +91,16 @@ function setStatus(text, isError) {
   saveStatus.textContent = text
   saveStatus.style.color = isError ? '#f88' : '#8f8'
 }
+
+fetch('/commit-sha.txt')
+  .then((res) => res.text())
+  .then((sha) => {
+    sha = sha.trim()
+    const link = document.getElementById('commitLink')
+    link.textContent = sha
+    link.href = `https://github.com/rodlunt/family-chart/commit/${sha}`
+  })
+  .catch(() => {})  // cosmetic only - a missing version file must never block the tree itself from loading
 
 Promise.all([
   fetch('/api/tree').then((res) => res.json()),
@@ -114,6 +170,18 @@ function create(data) {
     updateViewModeButton()
   })
 
+  printButton.addEventListener('click', () => {
+    // show everything, fit it into the current viewport, THEN print - the browser's own
+    // "fit to page width" print option scales that down to paper size
+    fullTree = true  // keep in sync with the actual state forced below, so "View full tree" toggles correctly afterward instead of turning full-tree view back on from a stale false
+    f3Chart.setShowUnconnected(true)
+    f3Chart.updateTree({ tree_position: 'fit' })
+    updateViewModeButton()
+    setTimeout(() => window.print(), 1100)  // just past the 1000ms transition, so nothing is still animating when the print snapshot is taken
+  })
+
+  exportButton.addEventListener('click', () => exportStandaloneHtml(f3EditTree.exportData()))
+
   function updateViewModeButton() {
     const selected = data.find(d => d.id === selectedPersonId)
     viewModeButton.textContent = fullTree && selected ? `Focus on ${displayName(selected)}` : 'View full tree'
@@ -175,6 +243,60 @@ function create(data) {
     }
   }
 
+}
+
+// Builds one self-contained HTML file - vendor JS/CSS and the tree data all inlined, no
+// server calls - so it can be emailed or opened by anyone with no account, no internet
+// connection and no server running. Deliberately view-only: no editTree() call at all, so
+// there's no "Add Father" etc. and nothing that could try to save back to a server that
+// isn't there.
+async function exportStandaloneHtml(data) {
+  // A literal `</script` or `</style` anywhere in these values - vendor library source, or a
+  // family member's own text in a field one day - would close the tag early the moment this
+  // exported file is opened and re-parsed as HTML, same as the bug this function's own
+  // hand-written closing tags had (fixed below with the `<\/script>` form). Escaping it here
+  // covers both the vendor files and the data payload, not just this function's own source.
+  const escapeClosingTags = (str) => str.replace(/<\/(script|style)/gi, '<\\/$1')
+  const [d3Js, familyChartJs, familyChartCss] = await Promise.all([
+    fetch('/vendor/d3.min.js').then((r) => r.text()),
+    fetch('/vendor/family-chart.js').then((r) => r.text()),
+    fetch('/vendor/family-chart.css').then((r) => r.text()),
+  ]).then((files) => files.map(escapeClosingTags))
+  const dataJson = escapeClosingTags(JSON.stringify(data))
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Family Tree (exported ${new Date().toISOString().slice(0, 10)})</title>
+<style>${familyChartCss}
+body { font-family: 'Arial', sans-serif; margin: 0; }
+#FamilyChart { width: 100%; height: 100vh; background-color: rgb(33,33,33); color: #fff; }
+</style>
+</head>
+<body>
+<div id="FamilyChart" class="f3"></div>
+<script>${d3Js}<\/script>
+<script>${familyChartJs}<\/script>
+<script>
+const data = ${dataJson}
+const displayName = (d) => {
+  const legalGivenNames = [d.data['first name'], d.data['middle name']].filter(Boolean).join(' ')
+  const publishedGivenNames = d.data['common name'] ? \`\${d.data['common name']} (\${legalGivenNames})\` : legalGivenNames
+  return [publishedGivenNames, d.data['last name']].filter(Boolean).join(' ')
+}
+const f3Chart = f3.createChart('#FamilyChart', data).setCardXSpacing(250).setCardYSpacing(150).setShowUnconnected(true)
+f3Chart.setCard(f3.CardHtml).setCardDisplay([displayName, ["birthday"]])
+f3Chart.updateTree({ initial: true })
+<\/script>
+</body>
+</html>`
+  const blob = new Blob([html], { type: 'text/html' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `family-tree-${new Date().toISOString().slice(0, 10)}.html`
+  a.click()
+  URL.revokeObjectURL(url)
 }
 
 let pendingSave = null  // newest unsaved snapshot; replacing this makes rapid edits explicitly last-write-wins
