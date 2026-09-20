@@ -1,10 +1,8 @@
 import { EditDatumFormCreator, NewRelFormCreator, SelectField, FileField, FileListField } from '../types/form'
 import * as icons from './icons'
 
-// Basic HTML-attribute escaping so a quote in a filename or JSON payload can't break out of
-// the attribute it's placed in. The rest of this file's field renderers don't escape their
-// values (pre-existing, out of scope here) - this is only for the new file-list field's JSON
-// blob, which is the one new value here actually likely to contain a `"`.
+// Basic HTML-attribute escaping so a quote in a filename, JSON payload or person's name can't
+// break out of the attribute or tag it's placed in.
 function escapeAttr(str: string) {
   return String(str).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
 }
@@ -256,14 +254,17 @@ function addLinkExistingRelative(form_creator: EditDatumFormCreator | NewRelForm
   const title = form_creator.linkExistingRelative.hasOwnProperty('title') ? form_creator.linkExistingRelative.title : 'Profile already exists?'
   const select_placeholder = form_creator.linkExistingRelative.hasOwnProperty('select_placeholder') ? form_creator.linkExistingRelative.select_placeholder : 'Select profile'
   const options = form_creator.linkExistingRelative.options as SelectField['options']
+  // option.label is built from a person's own name fields - user-entered data, so escaped the
+  // same way the file-upload field's values are elsewhere in this file, not left as the one
+  // remaining unescaped sink now that everything else here has been closed off.
   return (`
     <div>
       <hr>
       <div class="f3-link-existing-relative">
-        <label>${title}</label>
+        <label>${escapeAttr(title || '')}</label>
         <select>
-          <option value="">${select_placeholder}</option>
-          ${options.map(option => `<option value="${option.value}">${option.label}</option>`).join('')}
+          <option value="">${escapeAttr(select_placeholder || '')}</option>
+          ${options.map(option => `<option value="${escapeAttr(option.value)}">${escapeAttr(option.label)}</option>`).join('')}
         </select>
       </div>
     </div>

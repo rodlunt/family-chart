@@ -159,16 +159,36 @@ export class EditTree {
   }
 
   private setupAddRelative() {
-    return addRelative(this.store, () => onActivate(this), (datum: Datum) => cancelCallback(this, datum))
-  
+    return addRelative(
+      this.store,
+      () => onActivate(this),
+      (datum: Datum) => cancelCallback(this, datum),
+      this.modal,
+      () => this.link_existing_rel_config,
+      (placeholder: Datum, resolution) => onResolved(this, placeholder, resolution),
+    )
+
     function onActivate(self: EditTree) {
       if (self.removeRelativeInstance.is_active) self.removeRelativeInstance.onCancel!()
     }
-  
+
     function cancelCallback(self: EditTree, datum: Datum) {
       self.store.updateMainId(datum.id)
       self.store.updateTree({})
       self.openFormWithId(datum.id)
+    }
+
+    // Called once the add-relative wizard resolves a relationship choice: either the user
+    // wants to fill in a brand new person (open that placeholder's own edit form, with the
+    // "link to existing person" dropdown suppressed since that choice was already made
+    // explicitly by picking "create new" in the wizard), or they picked an existing person to
+    // link straight away (no form needed - same data path as picking one from that dropdown).
+    function onResolved(self: EditTree, placeholder: Datum, resolution: {type: 'create'} | {type: 'link', link_rel_id: Datum['id']}) {
+      if (resolution.type === 'create') {
+        self.cardEditForm(placeholder, {suppressLinkExisting: true})
+      } else {
+        self.finishAddRelative(placeholder, {link_rel_id: resolution.link_rel_id})
+      }
     }
   }
   
@@ -246,8 +266,34 @@ export class EditTree {
     this.formCont = formCont
     return this
   }
-  
-  cardEditForm(datum: Datum) {
+
+  private getFormContModal() {
+    const modal = this.modal
+    return {
+      populate(form_element: HTMLElement) {
+        modal.activate(form_element)
+      },
+      open() {
+        // no-op: modal.activate() (called from populate()) already opens the modal
+      },
+      close() {
+        modal.close()
+      },
+    }
+  }
+
+  /**
+   * Choose how the edit form is displayed: the default fixed side panel, or a modal dialog
+   * (built on the same reusable Modal used for remove-relative confirmation and the
+   * add-relative wizard).
+   * @param mode - 'panel' (default) or 'modal'
+   */
+  setEditFormDisplay(mode: 'panel' | 'modal') {
+    this.formCont = mode === 'modal' ? this.getFormContModal() : this.getFormContDefault()
+    return this
+  }
+
+  cardEditForm(datum: Datum, opts?: {suppressLinkExisting?: boolean}) {
     const props: {
       onCancel?: () => void,
       addRelative?: AddRelative,
@@ -277,6 +323,7 @@ export class EditTree {
       editFirst: this.editFirst,
       no_edit: this.no_edit,
       link_existing_rel_config: this.link_existing_rel_config,
+      suppressLinkExisting: opts?.suppressLinkExisting,
       onFormCreation: this.onFormCreation,
       onSubmit: this.onSubmit,
       onDelete: this.onDelete,
@@ -296,13 +343,12 @@ export class EditTree {
   
     function postSubmitHandler(self: EditTree, props: any) {
       if (self.addRelativeInstance.is_active) {
-        self.addRelativeInstance.onChange!(datum, props)
-        if (self.postSubmit) self.postSubmit(datum, self.store.getData())
-        const active_datum = self.addRelativeInstance.datum
-        if (!active_datum) throw new Error('Active datum not found')
-        self.store.updateMainId(active_datum.id)
-        self.openWithoutRelCancel(active_datum)
-      } else if ((datum.to_add || datum.unknown) && props?.link_rel_id) {
+        self.finishAddRelative(datum, props)
+        if (!self.is_fixed) self.closeForm()
+        return
+      }
+
+      if ((datum.to_add || datum.unknown) && props?.link_rel_id) {
         handleLinkRel(datum, props.link_rel_id, self.store.getData())
         self.store.updateMainId(props.link_rel_id)
         self.openFormWithId(props.link_rel_id)
@@ -310,15 +356,33 @@ export class EditTree {
         if (self.postSubmit) self.postSubmit(datum, self.store.getData())
         self.openFormWithId(datum.id)
       }
-  
+
       if (!self.is_fixed) self.closeForm()
-      
+
       self.store.updateTree({})
-  
+
       self.updateHistory()
     }
   }
-  
+
+  /**
+   * Completes an in-progress add-relative action for `placeholder`: either it was filled in
+   * as a new person (normal form submit, no `link_rel_id`) or linked to an existing person
+   * (`props.link_rel_id` set - via the placeholder's own form dropdown, or directly from the
+   * add-relative wizard's "link an existing person" step). Navigates back to the person the
+   * relative was added to, matching the existing add-relative UX either way.
+   */
+  private finishAddRelative(placeholder: Datum, props: any) {
+    this.addRelativeInstance.onChange!(placeholder, props)
+    if (this.postSubmit) this.postSubmit(placeholder, this.store.getData())
+    const active_datum = this.addRelativeInstance.datum
+    if (!active_datum) throw new Error('Active datum not found')
+    this.store.updateMainId(active_datum.id)
+    this.openWithoutRelCancel(active_datum)
+    this.store.updateTree({})
+    this.updateHistory()
+  }
+
   openForm() {
     this.formCont.open()
   }

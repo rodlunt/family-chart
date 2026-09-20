@@ -8,11 +8,15 @@ export class Modal {
   modal_cont: HTMLElement
   active: boolean
   onClose: (() => void) | null
+  previouslyFocused: HTMLElement | null
+  private keydownHandler: ((event: KeyboardEvent) => void) | null
 
   constructor(cont: HTMLElement) {
     this.cont = cont
     this.active = false
     this.onClose = null
+    this.previouslyFocused = null
+    this.keydownHandler = null
 
     this.modal_cont = d3.select(this.cont).append('div').attr('class', 'f3-modal').node()!
     d3.select(this.modal_cont).style('display', 'none')
@@ -22,18 +26,25 @@ export class Modal {
   create() {
     const modal = d3.select(this.modal_cont)
     modal.html(`
-      <div class="f3-modal-content">
-        <span class="f3-modal-close">&times;</span>
+      <div class="f3-modal-content" role="dialog" aria-modal="true">
+        <span class="f3-modal-close" role="button" tabindex="0" aria-label="Close">&times;</span>
         <div class="f3-modal-content-inner"></div>
         <div class="f3-modal-content-bottom"></div>
       </div>
     `)
-  
-    
+
+
     modal.select('.f3-modal-close').on('click', () => {
       this.close()
     })
-  
+
+    modal.select('.f3-modal-close').on('keydown', (event: KeyboardEvent) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault()
+        this.close()
+      }
+    })
+
     modal.on('click', (event) => {
       if (event.target == modal.node()) {
         this.close()
@@ -72,15 +83,47 @@ export class Modal {
     d3.select(this.modal_cont).select('.f3-modal-content-inner').html('')
     d3.select(this.modal_cont).select('.f3-modal-content-bottom').html('')
   }
-  
+
   open() {
+    if (!this.active) {
+      this.previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null
+      this.keydownHandler = (event: KeyboardEvent) => {
+        if (event.key === 'Escape') this.close()
+      }
+      document.addEventListener('keydown', this.keydownHandler)
+    }
     this.modal_cont.style.display = 'block'
     this.active = true
+    this.focusContent()
   }
-  
+
+  // First focusable element inside the modal's actual content (never the close button
+  // itself, which sits before it in the DOM) - falling back to the close button only when
+  // the content has nothing focusable of its own.
+  private focusContent() {
+    const content = d3.select(this.modal_cont).select('.f3-modal-content').node() as HTMLElement | null
+    if (!content) return
+    const focusable_selector = 'input, select, textarea, button, a[href], [tabindex]:not([tabindex="-1"])'
+    const inner = content.querySelector<HTMLElement>('.f3-modal-content-inner')
+    const bottom = content.querySelector<HTMLElement>('.f3-modal-content-bottom')
+    const focusable = (inner && inner.querySelector<HTMLElement>(focusable_selector))
+      || (bottom && bottom.querySelector<HTMLElement>(focusable_selector))
+    const close_btn = content.querySelector<HTMLElement>('.f3-modal-close')
+    const target = focusable || close_btn
+    if (target) target.focus()
+  }
+
   close() {
     this.modal_cont.style.display = 'none'
     this.active = false
+    if (this.keydownHandler) {
+      document.removeEventListener('keydown', this.keydownHandler)
+      this.keydownHandler = null
+    }
+    if (this.previouslyFocused) {
+      this.previouslyFocused.focus()
+      this.previouslyFocused = null
+    }
     if (this.onClose) this.onClose()
   }
 }

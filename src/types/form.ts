@@ -15,6 +15,10 @@ export interface FormCreatorSetupProps {
   editFirst: boolean
   no_edit: boolean
   link_existing_rel_config?: {linkRelLabel: (d: Datum) => string, title?: string, select_placeholder?: string}
+  /** Suppresses the "Profile already exists?" link-existing dropdown for this one form, even
+   *  when `link_existing_rel_config` is set - used when the add-relative wizard's "create a
+   *  new person" step already made that choice explicitly, so the form shouldn't re-offer it. */
+  suppressLinkExisting?: boolean
   onFormCreation: EditTree['onFormCreation']
   addRelative?: AddRelative
   removeRelative?: RemoveRelative

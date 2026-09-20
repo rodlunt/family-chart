@@ -1,14 +1,29 @@
 import { handleLinkRel } from "../store/add-existing-rel"
-import { addDatumRelsPlaceholders, cleanUp, updateGendersForNewRelatives } from "../store/add-relative"
+import { cleanUp, updateGendersForNewRelatives } from "../store/add-relative"
+import { runAddRelativeWizard } from "./add-relative-wizard"
 import { Data, Datum } from "../types/data"
 import { Store } from "../types/store"
+import { Modal } from "../features/modal"
+import { FormCreatorSetupProps } from "../types/form"
 
-export default (store: Store, onActivate: () => void, cancelCallback: (datum: Datum) => void) => { return new AddRelative(store, onActivate, cancelCallback) }
+export type AddRelativeResolution = {type: 'create'} | {type: 'link', link_rel_id: Datum['id']}
+
+export default (
+  store: Store,
+  onActivate: () => void,
+  cancelCallback: (datum: Datum) => void,
+  modal: Modal,
+  getLinkExistingRelConfig: () => FormCreatorSetupProps['link_existing_rel_config'],
+  onResolved: (placeholder: Datum, resolution: AddRelativeResolution) => void,
+) => { return new AddRelative(store, onActivate, cancelCallback, modal, getLinkExistingRelConfig, onResolved) }
 
 export class AddRelative {
   store: Store
   onActivate: () => void
   cancelCallback: (datum: Datum) => void
+  modal: Modal
+  getLinkExistingRelConfig: () => FormCreatorSetupProps['link_existing_rel_config']
+  onResolved: (placeholder: Datum, resolution: AddRelativeResolution) => void
   datum: Datum | null
   onChange: ((updated_datum: Datum, props: any) => void) | null
   onCancel: (() => void) | null
@@ -21,43 +36,69 @@ export class AddRelative {
     daughter: string
   }
   canAdd?: (datum: Datum) => {parent?: boolean, spouse?: boolean, child?: boolean}
-  
-  constructor(store: Store, onActivate: () => void, cancelCallback: (datum: Datum) => void) {
+
+  constructor(
+    store: Store,
+    onActivate: () => void,
+    cancelCallback: (datum: Datum) => void,
+    modal: Modal,
+    getLinkExistingRelConfig: () => FormCreatorSetupProps['link_existing_rel_config'],
+    onResolved: (placeholder: Datum, resolution: AddRelativeResolution) => void,
+  ) {
 
     this.store = store
-  
+
     this.onActivate = onActivate
     this.cancelCallback = cancelCallback
-  
+    this.modal = modal
+    this.getLinkExistingRelConfig = getLinkExistingRelConfig
+    this.onResolved = onResolved
+
     this.datum = null
-  
+
     this.onChange = null
     this.onCancel = null
-  
+
     this.is_active = false
-  
+
     this.addRelLabels = this.addRelLabelsDefault()
-  
+
     return this
   }
 
+  /**
+   * Activates add-relative mode for `datum` and opens the relationship-first wizard (a
+   * modal: pick a relationship type - Parent/Spouse/Child, with a father-vs-mother or
+   * son-vs-daughter sub-step where relevant - then choose to create a new person or link an
+   * existing one). Exactly one placeholder person is created, once the wizard resolves; it
+   * carries the same `_new_rel_data` shape the old flow's ghost cards did.
+   */
   activate(datum: Datum) {
     if (this.is_active) this.onCancel!()
     this.onActivate()
     this.is_active = true
     this.store.state.one_level_rels = true
-  
+
     const store = this.store
-  
+
     this.datum = datum
     let gender_stash = this.datum.data.gender
-  
-    addDatumRelsPlaceholders(datum, this.getStoreData(), this.addRelLabels, this.canAdd)
-    store.updateTree({})
-  
+
     this.onChange = onChange
     this.onCancel = () => onCancel(this)
-  
+
+    runAddRelativeWizard({
+      modal: this.modal,
+      store: this.store,
+      datum,
+      addRelLabels: this.addRelLabels,
+      canAdd: this.canAdd,
+      getLinkExistingRelConfig: this.getLinkExistingRelConfig,
+      onCreateNew: (placeholder) => this.onResolved(placeholder, {type: 'create'}),
+      onLinkExisting: (placeholder, link_rel_id) => this.onResolved(placeholder, {type: 'link', link_rel_id}),
+      onCancel: () => this.onCancel!(),
+    })
+
     function onChange(updated_datum: Datum, props: any) {
       if (updated_datum?._new_rel_data) {
         if (props?.link_rel_id) handleLinkRel(updated_datum, props.link_rel_id, store.getData())
@@ -71,22 +112,22 @@ export class AddRelative {
         console.error('Something went wrong')
       }
     }
-  
+
     function onCancel(self: AddRelative) {
       if (!self.is_active) return
       self.is_active = false
       self.store.state.one_level_rels = false
-  
+
       self.cleanUp()
       self.cancelCallback(self.datum!)
-  
+
       self.datum = null
       self.onChange = null
       self.onCancel = null
     }
-  
+
   }
-  
+
   setAddRelLabels(add_rel_labels: AddRelative['addRelLabels']) {
     if (typeof add_rel_labels !== 'object') {
       console.error('add_rel_labels must be an object')
@@ -103,7 +144,7 @@ export class AddRelative {
     this.canAdd = canAdd
     return this
   }
-  
+
   addRelLabelsDefault() {
     return {
       father: 'Add Father',
@@ -113,15 +154,15 @@ export class AddRelative {
       daughter: 'Add Daughter'
     }
   }
-  
+
   getStoreData() {
     return this.store.getData()
   }
-  
+
   cleanUp(data?: Data | undefined) {
     if (!data) data = this.store.getData()
     cleanUp(data)
-  
+
     return data
   }
 }

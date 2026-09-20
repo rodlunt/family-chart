@@ -85,6 +85,17 @@
     /* Edit panel */
     .f3-form-cont { background: var(--panel); border-left: 1px solid var(--panel-line); box-shadow: none; }
     .f3-form { font-family: var(--font-body); }
+
+    /* Edit modal (setEditFormDisplay('modal')): same warm-panel language as the side panel it
+       replaces, not the base library's plain grey/rounded default - flat, sharp-cornered,
+       no border radius, same panel background and hairline border as everywhere else. */
+    .f3-modal-content {
+      background: var(--panel); border: 1px solid var(--panel-line); border-radius: 0;
+      color: var(--text); font-family: var(--font-body);
+    }
+    .f3-modal-close { color: var(--text-dim); }
+    .f3-modal-close:hover, .f3-modal-close:focus { color: var(--text); }
+    .f3-add-relative-wizard .f3-btn { width: 100%; text-align: center; }
     .f3-form-title { font-family: var(--font-display); font-size: 19px; letter-spacing: .01em; }
     .f3-form input[type="text"], .f3-form textarea, .f3-form select {
       background: var(--ink); border-color: var(--panel-line); border-radius: 2px; color: var(--text);
@@ -283,6 +294,7 @@ function create(data) {
       addRelationshipStatusControls(cont, form_creator.datum_id)
     })
     .setOnChange(() => save(f3EditTree.exportData()))  // fires after every add/edit/delete/link, so nothing is ever lost between visits
+    .setEditFormDisplay('modal')  // edit form (and the add-relative wizard) opens as a modal dialog rather than living in a fixed side panel
 
   // Wired by hand instead of setCardClickOpen(f3Card): that helper opens the edit form FIRST
   // and only recenters the tree as a second, separate step afterward (its own

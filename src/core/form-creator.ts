@@ -25,6 +25,7 @@ export function formCreatorSetup({
   onCancel,
   editFirst,
   link_existing_rel_config,
+  suppressLinkExisting,
   onFormCreation,
   no_edit,
   onSubmit,
@@ -78,7 +79,7 @@ export function formCreatorSetup({
       editable: true
     }
   }
-  if (datum._new_rel_data || datum.to_add || datum.unknown) {
+  if ((datum._new_rel_data || datum.to_add || datum.unknown) && !suppressLinkExisting) {
     if (link_existing_rel_config) form_creator.linkExistingRelative = createLinkExistingRelative(datum, store.getData(), link_existing_rel_config)
   }
 
