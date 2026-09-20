@@ -362,7 +362,19 @@ export default function calculateTree(data: Data, {
         private_cards_config,
         duplicate_branch_toggle,
         on_toggle_one_close_others,
-        show_unconnected: false,  // this nested call lays out exactly this one component; it must not recurse into placing ITS OWN unconnected people
+        // `component`'s membership was found by a fully transitive walk over parents+spouses+
+        // children (getReachableWithin), but this nested calculateTree's own ego-centric layout
+        // from a single `root` only reaches root's blood ancestors/descendants plus each of
+        // their DIRECT spouses - it never walks into a spouse's own parents or siblings. A person
+        // connected to the component only through such a link (e.g. an unconfirmed ancestor whose
+        // sole tie to the rest of the family is being an in-law's parent) is a real member of
+        // `component` that this single-root walk can never reach, and used to be silently absent
+        // from `component_tree` below - which then made the *anchor* lookup a few lines down
+        // fail and the whole branch get dropped (see the anchored_node/related_node guard).
+        // Recursing here closes that gap: it's bounded, since `layout_component` is already a
+        // strict subset of the outer call's data, and each further nested "unconnected" group is
+        // a strictly smaller subset again, so this can't run away.
+        show_unconnected: true,
       }).data
 
       component_tree.forEach(d => {
@@ -393,7 +405,15 @@ export default function calculateTree(data: Data, {
     anchored_components.forEach(component => {
       const anchored_node = component.nodes.find(d => d.data.id === component.anchor!.person_id)  // the component's own person named in the anchor
       const related_node = tree.find(d => d.data.id === component.anchor!.relative_id)  // their counterpart, already placed in the displayed tree
-      if (!anchored_node || !related_node) return  // shouldn't happen given how anchor was found, but never place against a node that isn't actually there
+      if (!anchored_node || !related_node) {
+        // Should be unreachable now that the nested calculateTree call above recurses with its
+        // own show_unconnected pass (every member of `component` is guaranteed a place in
+        // component.nodes, anchored or floating, same invariant this function itself provides
+        // at the top level). If this still fires, some component member genuinely has no node -
+        // surface it loudly rather than silently dropping the whole branch the way this used to.
+        console.error('placeUnconnected: anchor node missing from its own component, dropping this branch instead of placing it', {anchor: component.anchor, anchored_node_found: !!anchored_node, related_node_found: !!related_node, component_node_ids: component.nodes.map(d => d.data.id)})
+        return
+      }
       const direction = component.anchor!.kind === "parents" ? 1 : component.anchor!.kind === "children" ? -1 : 0  // parents render above (+1 generation), children below (-1), spouses level (0)
       const base_dx = is_horizontal
         ? related_node.x + direction * level_separation - anchored_node.x
