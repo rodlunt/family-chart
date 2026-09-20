@@ -1,84 +1,46 @@
 # family-chart Session Handoff Baton
 
-2026-09-20 -- Layout fixes, request-access flow, repo public-launch session
+2026-09-20 -- Issue clear-out: bug fix, uploads, modal editing session
 
 **Branch:** master
 
 **Last commits this session:**
-- 12fc724 Merge pull request #20 from rodlunt/fix/no-real-names-in-repo
-- 530dc8d fix: move real names out of the public repo entirely
-- f430328 Merge pull request #19 from rodlunt/chore/repo-setup-public-standard-v2
-- f1805fb fix(ci): pin pnpm version via packageManager field
-- 5d6caa7 chore: bring the repo up to public-repo standard
-- 43f7a7d Merge pull request #18 from rodlunt/chore/rename-to-tree-research
-- 1fed3c2 chore: rename app from "Lunt Family Tree" to "Tree Research"
-- cfd3dd3 Merge pull request #17 from rodlunt/feat/request-access
-
-(Earlier in the same session, not shown above: PR #15/#16, the full design pass and the
-collateral-branch/multi-spouse layout fixes -- see "What shipped" below.)
+- 4f7003c Merge pull request #27 from rodlunt/feat/issue-8-modal-editing
+- b43a6c7 fix: multi-spouse child attribution and dropdown escaping in wizard
+- 8c36e5b feat: modal-based editing and relationship-first add-relative wizard
+- 3f7256f Merge pull request #26 from rodlunt/feat/issue-5-9-upload-endpoint
+- bd1b473 fix: close upload/attachment XSS gaps flagged by security review
+- d7045b9 feat: file upload endpoint, avatar picker, notes and attachments
+- 97a36c8 Merge pull request #24 from rodlunt/fix/issue-22-unconfirmed-anchor-vanishing
+- a5ee3ce fix: recurse show_unconnected into per-component nested layout
+- eb39715 Merge pull request #23 from rodlunt/chore/remove-cypress-dependabot-alerts
+- cc56404 chore: remove unused Cypress e2e suite
 
 ---
 
 ## What shipped this session
 
-- **Missing connector lines fixed.** People placed near a real relative via the
-  floating/collateral-branch layout (Vivienne, Pauline, Noel to Bernard and Laurel Jean; Aunty
-  Sally to Nanna Pat) now actually get a line drawn to that relative -- previously the position
-  was right but the line was silently missing for anyone anchored by a *confirmed* relationship
-  (only unconfirmed ones got a line before).
-- **Multi-spouse centering fixed.** A person with two spouses (Ken Dowman) now renders centred
-  between them instead of one spouse being pushed to the edge, so children's lines read
-  unambiguously (Tony Dowman's line no longer looks like it passes through Aunty Sally).
-- **"Reset view" button added.** Clicking into someone while in full-tree mode could silently
-  half-update with no way back to a working view. This button unconditionally returns to a
-  fitted view of everyone, regardless of how far main_id has drifted from clicking around.
-- **Public `/request-access` page shipped.** Carved out of Caddy's basic_auth (Caddyfile change
-  lives in the smart-home repo). Submitting emails Rodney via Resend with a reply-to of the
-  requester -- he still creates and sends logins by hand. Own rate limit and input validation
-  since it's the one public unauthenticated write surface. Caught and fixed a same-session
-  regression where the first version also intercepted the actual login challenge, not just a
-  cancelled one.
-- **App renamed** "Lunt Family Tree" -> "Tree Research" (not everyone invited will carry the
-  Lunt surname).
-- **Repo brought to public-repo standard.** Full git-history audit came back clean (no genealogy
-  data or secrets ever committed). Added a real README, issue/PR templates, CONTRIBUTING.md,
-  SECURITY.md, Dependabot, build-only CI, repo description/topics.
-- **Real names removed from source entirely.** `AUTH_USER_PERSON_IDS` used to hardcode real
-  family members' names in `server/index.js`; moved to `AUTH_USER_PERSON_IDS_JSON`, a runtime
-  env var in opti's gitignored `.env` (same pattern as `RESEND_API_KEY`).
-- Live data: 48 people, Janyta added, Vivienne's birthdate added, one stray auto-generated
-  placeholder record found and cleaned up (unrelated to any of the above -- root cause never
-  identified, Rodney reviewed the full list and confirmed nothing looked missing).
+- **Issue #22 fixed (the vanishing-tree bug).** Root cause found: `placeUnconnected`'s nested per-component `calculateTree()` call only walked blood ancestors/descendants plus direct spouses, so a component member reachable only via a spouse's own parent (e.g. an unconfirmed ancestor tied in through an in-law) could never be placed, which silently dropped the entire component when that unreachable person carried the anchor link. Fixed by letting the nested call recurse with its own `show_unconnected` pass. Verified with a synthetic fixture that genuinely failed pre-fix and passed post-fix.
+- **Issue #21 closed.** Removed the unused Cypress e2e devDependency (tested upstream's unchanged demo pages, wasn't wired into CI) -- cleared all 11 open Dependabot alerts at once. Filed a heads-up issue on upstream `donatso/family-chart` (#108) about the same Cypress-driven vulnerabilities, since it inherited the same devDependency.
+- **Issues #5 + #9 shipped together (file upload, avatar picker, notes, attachments).** New `POST /api/upload` / `GET /uploads/*` in `server/index.js`, new `file`/`file-list` field types in the core library, `EditTree.setUploadHandler()`. Two real security defects found and fixed before merge: the server was deriving the served `Content-Type` from the client-supplied filename extension rather than the validated content-type (stored-XSS risk, fixed by forcing the extension from the validated type allowlist); and stored avatar/attachment URLs were rendered into `href`/`src` without scheme validation (fixed with an `isSafeUrl` check at every sink).
+- **Issue #8 shipped (modal-based editing + relationship-first add-relative wizard).** Reused the library's existing `Modal` class (previously only used for the remove-relative confirmation) and `EditTree`'s already-swappable form-container abstraction, so this was less invasive than the issue's "real redesign" framing suggested. The old "5 ghost cards on the canvas" add-relative mechanism is replaced by an explicit two-step modal wizard (relationship type, then create-new-vs-link-existing). Found and fixed two defects before merge: the child-adding path silently misattributed a new child to `spouses[0]` when a person has more than one spouse (added a spouse-picker sub-step instead); and the wizard's dropdown (plus a pre-existing function it copied) interpolated person names into raw HTML unescaped (fixed with d3's safe `.text()`/`.attr()` API).
+- **New issue #25 filed**: an in-app "something to contribute" form (text + file, with a credited/anonymous choice) for the four existing logins, explicitly deferring any review/moderation-queue question to #11.
+- Backlog went from 8 open issues to 5 this session (#21, #22, #5, #9, #8 closed; #25 opened).
 
 ---
 
 ## Open follow-ups
 
-1. **Issue #22 -- full-tree view can silently vanish**, when focusing a person (e.g. Geoff)
-   whose only connection to the rest of the tree is an unconfirmed relationship. Confirmed via
-   direct testing that the underlying data and the anchor-finding logic are both correct, but
-   the rest of the tree still doesn't appear -- root cause not found, needs actual
-   instrumentation inside `calculate-tree.ts`, not more black-box testing. "Reset view" recovers
-   from it in the meantime.
-2. **Issue #21 -- dependency vulnerability sweep**, 11 open Dependabot alerts, all traced to
-   `cypress` as a devDependency (systeminformation, extract-zip, and deeper transitives). Two
-   ways to close it out: bump Cypress, or remove it entirely since it isn't wired into CI and
-   only tests upstream's unchanged demo pages.
-3. **Issue #11 -- full passwordless magic-link login system + review workflow.** The
-   `/request-access` page shipped this session is explicitly the simple interim step toward
-   this, not a replacement for it.
-4. Issues #5 (photo upload), #8 (modal-based editing), #9 (notes/attachments), #10 (per-person
-   timeline), #12 (real database), #13 (admin panel) -- all filed, none started, all deliberately
-   deferred as bigger design decisions.
-5. **Uncommitted `.gitignore` change on disk right now** (adds `/outreach/`) that isn't from
-   this session's work -- looks like it's from a concurrent Claude session on the same machine
-   drafting Rodney's LinkedIn outreach message in this same shared checkout. Left alone
-   deliberately; check with Rodney or that other session before touching it.
+1. **Issue #11 -- full passwordless magic-link login system + review workflow.** Still the biggest open design question: real auth, roles, a moderation queue, replacing the current "every login has equal direct write access" model. Issue #13 (admin panel) is blocked on this.
+2. **Issue #13 -- user management admin panel.** Blocked on #11's user model existing first.
+3. **Issue #10 -- per-person timeline (life events + artefacts).** Biggest of the remaining feature requests, needs its own design pass.
+4. **Issue #12 -- move off the flat JSON file to a real (vector-capable) database.** Explicitly sequenced after #9/#10 settle what the new tables need to hold; #9 shipped this session, so this may be less premature than before, but hasn't been revisited.
+5. **Issue #25 -- "something to contribute" form**, filed this session, not started. Depends on #5/#9's upload plumbing (already shipped), explicitly out of scope: any moderation gate (tracked in #11).
+6. **Uncommitted `.gitignore` change on disk right now** (adds `/outreach/`), still present, still not from this session's issue work -- it's Rodney's own in-progress LinkedIn outreach drafting in this same checkout. Left alone deliberately again this session; check with Rodney before touching it.
+7. Upstream `donatso/family-chart` issue #108 (Cypress vulnerability heads-up) is open on their repo, not ours -- nothing to do here, just noting it exists in case it comes up.
 
 ---
 
 ## Suggested starting point
 
-Issue #22 (the vanishing-tree bug) is the most valuable next pickup -- it's a real, reproducible
-defect with a workaround already shipped, but the root cause needs someone to actually
-instrument `calculate-tree.ts`'s `placeUnconnected` rather than keep testing from the outside.
+Issue #11 (the login/invite/review-workflow redesign) is the natural next pickup -- it's the one remaining open issue that everything else (#13, and arguably how far #9's contribution features can go) is blocked behind, and it explicitly needs a dedicated design conversation with Rodney before any code, not a straight implementation session.
