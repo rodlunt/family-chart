@@ -1,6 +1,18 @@
 import { EditDatumFormCreator, NewRelFormCreator } from '../types/form'
 import { getHtmlEdit, getHtmlNew } from './create-form-html'
 
+// Same guard as create-form-html.ts's isSafeUrl - these two functions write a stored/just-
+// uploaded URL directly into an <a href> or <img src> DOM property, which is just as capable of
+// running a javascript: URL as the HTML-string sinks in that file.
+function isSafeUrl(url: string) {
+  if (url.startsWith('/')) return true
+  try {
+    return ['http:', 'https:'].includes(new URL(url).protocol)
+  } catch {
+    return false
+  }
+}
+
 
 export function createFormNew(form_creator: NewRelFormCreator, closeCallback: () => void) {
   return createForm(form_creator, closeCallback)
@@ -125,6 +137,7 @@ function setupFileFieldListeners(formContainer: HTMLElement, form_creator: EditD
   }
 
   function setSingleFilePreview(field_cont: HTMLElement, input: HTMLInputElement, url: string) {
+    if (!isSafeUrl(url)) return
     field_cont.querySelector('.f3-file-current')?.remove()
     let preview = field_cont.querySelector<HTMLImageElement>('img.f3-file-preview')
     if (!preview) {
@@ -140,6 +153,7 @@ function setupFileFieldListeners(formContainer: HTMLElement, form_creator: EditD
     if (!list_el) return
     list_el.innerHTML = ''
     items.forEach((item, i) => {
+      if (!isSafeUrl(item.url)) return
       const row = document.createElement('div')
       row.className = 'f3-filelist-item'
       const link = document.createElement('a')

@@ -14,14 +14,19 @@ const UPLOADS_DIR = process.env.UPLOADS_DIR || '/data/uploads'  // sibling to DA
 const PORT = process.env.PORT || 3000
 
 // Small private family archive, not a general uploader: home photos (avatar) and scanned
-// documents/certificates (attachments). Keyed by the exact contentType the client declares -
-// the value here is the extension used when serving the file back, but see serveUpload()
-// below, which derives Content-Type from the stored file's own extension, not this map, so a
-// mismatched claim at upload time can't be used to make a file serve back as something it
-// isn't.
-const ALLOWED_UPLOAD_TYPES = new Set([
-  'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-  'application/pdf', 'text/plain',
+// documents/certificates (attachments). Maps the client-declared contentType to the ONE
+// extension a file of that type is ever stored and served with - the client's own filename
+// extension is never trusted for this. Without this, a request could declare
+// contentType: "image/jpeg" (passing the allowlist below) but supply filename: "x.html" with
+// arbitrary HTML/JS as the body; serving that back would need Content-Type to come from
+// somewhere, and deriving it from the stored file's extension - which used to just be the
+// client's own filename, unsanitised beyond stripping path separators - would serve attacker
+// HTML/JS as text/html from this app's own origin. Forcing the extension from the validated
+// contentType instead closes that off: the extension on disk can never disagree with the type
+// that was actually allowlisted.
+const ALLOWED_UPLOAD_TYPES = new Map([
+  ['image/jpeg', '.jpg'], ['image/png', '.png'], ['image/gif', '.gif'], ['image/webp', '.webp'],
+  ['application/pdf', '.pdf'], ['text/plain', '.txt'],
 ])
 const MAX_UPLOAD_BYTES = 15 * 1024 * 1024  // decoded file size cap - photos and scanned certificates, never video
 const MAX_UPLOAD_RAW_BODY_BYTES = 21_000_000  // base64 inflates the payload ~33% over the decoded cap; this is that plus headroom for the JSON wrapper (filename/contentType/personId)
@@ -143,16 +148,17 @@ function assertValidPersonId(id) {
   return id
 }
 
-// Strips path separators and control characters (the traversal/injection vectors for a value
-// that ends up in a filesystem path), caps length, and falls back to a generic name if
-// nothing safe is left - unlike personId this one sanitises rather than rejects, since a
-// filename is just a display label once it's on disk, not something that has to match
+// Strips path separators, control characters and any extension (the extension used on disk
+// always comes from the validated contentType - see ALLOWED_UPLOAD_TYPES above - never from
+// this label), caps length, and falls back to a generic name if nothing safe is left. This is
+// purely a display label baked into the stored filename now, not something that has to match
 // anything else.
 function sanitizeFilename(name) {
   const stripped = String(name ?? '')
     .replace(/[\x00-\x1f\x7f]/g, '')
     .replace(/[/\\]/g, '_')
     .replace(/^\.+/, '')
+    .replace(/\.[^.]*$/, '')  // drop the client-supplied extension entirely - never trusted
     .trim()
   const safe = stripped.replace(/[^A-Za-z0-9._ -]/g, '_').slice(0, 150)
   return safe || 'file'
@@ -170,6 +176,12 @@ async function serveStatic(req, res) {
   res.end(content)
 }
 
+// Reverse of ALLOWED_UPLOAD_TYPES, used only to look up the Content-Type an uploaded file is
+// served with - by extension, never by re-reading or trusting anything about the request. Since
+// every stored file's extension was itself forced from this same map at upload time (never from
+// a client-supplied filename), this lookup can't disagree with what was actually allowlisted.
+const UPLOAD_CONTENT_TYPE_BY_EXT = new Map([...ALLOWED_UPLOAD_TYPES].map(([type, ext]) => [ext, type]))
+
 // Same path-traversal guard as serveStatic above, just rooted at UPLOADS_DIR instead of
 // PUBLIC_DIR - this directory lives outside PUBLIC_DIR specifically because it must survive a
 // container rebuild (it's on the /data volume) while PUBLIC_DIR is rebuilt from source.
@@ -179,8 +191,13 @@ async function serveUpload(req, res) {
   reqPath = path.normalize(reqPath).replace(/^(\.\.[/\\])+/, '')
   const full = path.join(UPLOADS_DIR, reqPath)
   if (!full.startsWith(UPLOADS_DIR)) { res.writeHead(403); res.end(); return }  // belt-and-braces on the normalize above
+  // Every file this endpoint ever wrote has one of these extensions (see ALLOWED_UPLOAD_TYPES);
+  // anything else requested here isn't a file this app created, so refuse it rather than
+  // guessing at a Content-Type for it.
+  const contentType = UPLOAD_CONTENT_TYPE_BY_EXT.get(path.extname(full).toLowerCase())
+  if (!contentType) { res.writeHead(404); res.end('Not found'); return }
   const content = await fs.readFile(full)  // throws ENOENT for a missing file, caught by the caller
-  res.writeHead(200, { 'Content-Type': MIME[path.extname(full).toLowerCase()] || 'application/octet-stream' })
+  res.writeHead(200, { 'Content-Type': contentType, 'X-Content-Type-Options': 'nosniff' })
   res.end(content)
 }
 
@@ -238,7 +255,8 @@ const server = http.createServer(async (req, res) => {
         if (tooLarge) return  // connection already dropped, nothing to respond to
         try {
           const { filename, contentType, dataBase64, personId } = JSON.parse(body)
-          if (!ALLOWED_UPLOAD_TYPES.has(contentType)) throw new Error('unsupported contentType')
+          const ext = ALLOWED_UPLOAD_TYPES.get(contentType)
+          if (!ext) throw new Error('unsupported contentType')
           if (typeof dataBase64 !== 'string' || !dataBase64) throw new Error('dataBase64 is required')
           const safePersonId = assertValidPersonId(personId)
           const buffer = Buffer.from(dataBase64, 'base64')
@@ -247,7 +265,9 @@ const server = http.createServer(async (req, res) => {
 
           const personDir = path.join(UPLOADS_DIR, safePersonId)
           await fs.mkdir(personDir, { recursive: true })  // don't assume the volume mount already created this
-          const storedName = `${Date.now()}-${sanitizeFilename(filename)}`
+          // The extension always comes from `ext` (derived from the validated contentType),
+          // never from the client's own filename - see ALLOWED_UPLOAD_TYPES's comment above.
+          const storedName = `${Date.now()}-${sanitizeFilename(filename)}${ext}`
           const dest = path.join(personDir, storedName)
           // Written directly rather than via writeTree's tmp-then-rename pattern: every
           // upload gets a fresh timestamped name, so there's no existing file at `dest` this

@@ -9,8 +9,25 @@ function escapeAttr(str: string) {
   return String(str).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
 }
 
+// svg deliberately excluded: an inline SVG can carry a <script>, executed if ever opened by
+// direct navigation rather than loaded as an <img> (where a stored value might also end up, via
+// the file-list "Current file" link below).
 function looksLikeImageUrl(url: string) {
-  return /\.(jpe?g|png|gif|webp|svg)(\?.*)?$/i.test(url)
+  return /\.(jpe?g|png|gif|webp)(\?.*)?$/i.test(url)
+}
+
+// A stored field value (avatar/attachment URL) reaches an href or img src below. Restrict it to
+// same-origin relative paths (what our own upload endpoint returns) or http(s) absolute URLs
+// (a pasted external link) - never a javascript:/data:/vbscript: etc. scheme, which would
+// otherwise execute in whichever family member's browser later clicks the link or renders the
+// image tag.
+function isSafeUrl(url: string) {
+  if (url.startsWith('/')) return true
+  try {
+    return ['http:', 'https:'].includes(new URL(url).protocol)
+  } catch {
+    return false
+  }
 }
 
 
@@ -162,7 +179,7 @@ function fields(form_creator: EditDatumFormCreator | NewRelFormCreator) {
       fields_html += `
       <div class="f3-form-field f3-file-field">
         <label>${field.label}</label>
-        ${value
+        ${value && isSafeUrl(value)
           ? (looksLikeImageUrl(value)
             ? `<img class="f3-file-preview" src="${escapeAttr(value)}" alt="${field.label}">`
             : `<div class="f3-file-current"><a href="${escapeAttr(value)}" target="_blank" rel="noopener">Current file</a></div>`)
@@ -205,7 +222,7 @@ function fields(form_creator: EditDatumFormCreator | NewRelFormCreator) {
         </div>`
       } else if (field.type === 'file') {
         const value = field.initial_value
-        if (!value) return
+        if (!value || !isSafeUrl(value)) return
         fields_html += `
         <div class="f3-info-field">
           <span class="f3-info-field-label">${field.label}</span>
@@ -216,6 +233,7 @@ function fields(form_creator: EditDatumFormCreator | NewRelFormCreator) {
       } else if (field.type === 'file-list') {
         let items: {url: string, name: string}[] = []
         try { items = field.initial_value ? JSON.parse(field.initial_value) : [] } catch { items = [] }
+        items = items.filter(item => isSafeUrl(item.url))
         if (!items.length) return
         fields_html += `
         <div class="f3-info-field">
