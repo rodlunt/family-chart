@@ -61,6 +61,15 @@
     .relationship-status legend { padding: 0 5px; font-size: 12px; color: var(--text-dim); }
     .relationship-status label { display: block; margin: 7px 0; font-size: 13px; }
     .relationship-status input[type="checkbox"]:checked + * { color: var(--line-unconfirmed); }
+    .contribution-fieldset textarea { width: 100%; box-sizing: border-box; resize: vertical; margin-bottom: 6px; }
+    .contribution-fieldset label { display: block; margin: 6px 0; font-size: 13px; }
+    .contribution-list { margin-bottom: 8px; }
+    .contribution-item {
+      padding: 6px 8px; margin-bottom: 6px; background: var(--ink);
+      border: 1px solid var(--panel-line); border-radius: 2px; font-size: 13px;
+    }
+    .contribution-item a { display: inline-block; margin-top: 4px; color: var(--line-unconfirmed); }
+    .contribution-meta { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
 
     /* Cards: read like a record card, not an avatar tile - flat, sharp-cornered, no gradients
        or drop shadows, gender colour as a quiet fill rather than a badge. Names carry the
@@ -278,7 +287,6 @@ function create(data) {
     .setFields([
       "first name", "middle name", "last name", "common name", "birthday",
       { id: 'avatar', type: 'file', label: 'Photo', accept: 'image/*' },
-      { id: 'notes', type: 'textarea', label: 'Notes' },
       { id: 'attachments', type: 'file-list', label: 'Files', accept: '*/*' },
     ])
     .setUploadHandler(uploadFile)
@@ -292,6 +300,7 @@ function create(data) {
       selectedPersonId = form_creator.datum_id
       updateViewModeButton()
       addRelationshipStatusControls(cont, form_creator.datum_id)
+      addContributionControls(cont, form_creator.datum_id)
     })
     .setOnChange(() => save(f3EditTree.exportData()))  // fires after every add/edit/delete/link, so nothing is ever lost between visits
     .setEditFormDisplay('modal')  // edit form (and the add-relative wizard) opens as a modal dialog rather than living in a fixed side panel
@@ -402,6 +411,177 @@ function create(data) {
       label.append(checkbox, ` ${row.type.label}: ${displayName(row.relative)}`)
       fieldset.appendChild(label)
     })
+    form.querySelector('hr')?.before(fieldset)
+  }
+
+  // #25: a small, bespoke "something to contribute" form, injected the same way the
+  // relationship-status checklist above is - the generic library field types (textarea,
+  // file-list) have no concept of a per-entry author or a credited/anonymous flag, so this
+  // isn't modelled as a library field. Entries live in `datum.data.notes_entries`, a
+  // JSON-encoded array, following the same "flat string on datum.data" convention the
+  // library's own file-list field already uses (see FileListField in src/types/form.ts) so no
+  // server or export-path change is needed.
+  //
+  // Anonymity note: there is no admin-vs-viewer distinction in the app UI yet (that's #11) -
+  // today all four logins see the same screen. So "hidden from other viewers, never from the
+  // admin" is honoured by never rendering a contributor's identity in this UI at all for an
+  // anonymous entry, for any viewer including Rodney using this same screen; the identity is
+  // still always stored in `contributor_person_id`, which is only ever reachable via direct
+  // access to the data file on the server (i.e. Rodney, as the person who runs it) or a future
+  // admin panel (#13) - never through this shared UI.
+  function addContributionControls(container, personId) {
+    const person = data.find(d => d.id === personId)
+    const form = container.querySelector('form')
+    if (!person || !form) return
+
+    const fieldset = document.createElement('fieldset')
+    fieldset.className = 'relationship-status contribution-fieldset'
+    const legend = document.createElement('legend')
+    legend.textContent = 'Something to contribute?'
+    fieldset.appendChild(legend)
+
+    const list = document.createElement('div')
+    list.className = 'contribution-list'
+    fieldset.appendChild(list)
+
+    function parseEntries() {
+      try { return person.data.notes_entries ? JSON.parse(person.data.notes_entries) : [] }
+      catch { return [] }
+    }
+
+    // Every attachment_url this form itself writes comes straight back from uploadFile(), so
+    // it's always our own "/uploads/..." path - but an entry could in principle have been
+    // hand-edited via direct API access, so this is checked before rendering as a link rather
+    // than trusted. Restricted to our own upload prefix (tighter than a generic scheme
+    // allowlist, since that's the only legitimate source for this field).
+    function isSafeAttachmentUrl(url) {
+      return typeof url === 'string' && url.startsWith('/uploads/')
+    }
+
+    function renderList() {
+      list.replaceChildren()
+      // A legacy free-text note entered before this form existed - shown once, read-only,
+      // never migrated into notes_entries automatically (no attribution/date to give it, and
+      // auto-writing on every page load risks an unwanted save cascade across the whole tree).
+      if (person.data.notes && person.data.notes.trim()) {
+        const item = document.createElement('div')
+        item.className = 'contribution-item'
+        const text = document.createElement('div')
+        text.textContent = person.data.notes
+        const meta = document.createElement('div')
+        meta.className = 'contribution-meta'
+        meta.textContent = 'Earlier note'
+        item.append(text, meta)
+        list.appendChild(item)
+      }
+      const entries = parseEntries()
+      entries.forEach(entry => {
+        const item = document.createElement('div')
+        item.className = 'contribution-item'
+        const text = document.createElement('div')
+        text.textContent = entry.text
+        item.appendChild(text)
+        if (entry.attachment_url && isSafeAttachmentUrl(entry.attachment_url)) {
+          const link = document.createElement('a')
+          link.href = entry.attachment_url
+          link.target = '_blank'
+          link.rel = 'noopener'
+          link.textContent = 'Attached file'
+          item.appendChild(link)
+        }
+        const meta = document.createElement('div')
+        meta.className = 'contribution-meta'
+        const contributor = entry.credited ? data.find(d => d.id === entry.contributor_person_id) : null
+        const who = entry.credited ? (contributor ? displayName(contributor) : 'A family member') : 'Anonymous contribution'
+        const when = entry.created_at ? new Date(entry.created_at).toLocaleDateString() : ''
+        meta.textContent = when ? `${who} · ${when}` : who
+        item.appendChild(meta)
+        list.appendChild(item)
+      })
+      if (!list.children.length) {
+        const empty = document.createElement('div')
+        empty.className = 'contribution-meta'
+        empty.textContent = 'No contributions yet.'
+        list.appendChild(empty)
+      }
+    }
+    renderList()
+
+    const textarea = document.createElement('textarea')
+    textarea.placeholder = 'Share a story, a correction, a source - anything you know about this person.'
+    textarea.rows = 3
+    fieldset.appendChild(textarea)
+
+    const fileInput = document.createElement('input')
+    fileInput.type = 'file'
+    fileInput.accept = '*/*'
+    fieldset.appendChild(fileInput)
+
+    const creditLabel = document.createElement('label')
+    const creditCheckbox = document.createElement('input')
+    creditCheckbox.type = 'checkbox'
+    creditCheckbox.checked = true
+    creditLabel.append(creditCheckbox, ' Credit me for this contribution')
+    fieldset.appendChild(creditLabel)
+
+    const hint = document.createElement('div')
+    hint.className = 'contribution-meta'
+    // "the admin" here means Rodney's access to the underlying data (via the server, or a
+    // future admin panel), not an in-app admin view, which doesn't exist yet - there's no
+    // admin/viewer role distinction in this shared screen (see the function comment above),
+    // so this exact wording, not "hidden from everyone but you", matters for accuracy.
+    hint.textContent = "If unticked, your name won't be shown here to other family members - the record itself always keeps track of who wrote it, for the admin."
+    fieldset.appendChild(hint)
+
+    const submitBtn = document.createElement('button')
+    submitBtn.type = 'button'
+    submitBtn.textContent = 'Add contribution'
+    fieldset.appendChild(submitBtn)
+
+    const status = document.createElement('div')
+    status.className = 'contribution-meta'
+    fieldset.appendChild(status)
+
+    submitBtn.addEventListener('click', async () => {
+      const text = textarea.value.trim()
+      const file = fileInput.files[0]
+      if (!text && !file) return
+      // Every entry's accountability (decision 2: identity always known server-side, even
+      // when hidden from other viewers) depends on loginPersonId resolving. If it doesn't
+      // (e.g. a basic_auth login exists but hasn't been added to AUTH_USER_PERSON_IDS_JSON
+      // yet), refuse rather than silently storing an unattributed entry that would render as
+      // a generic "A family member" with no way to trace it back afterward.
+      if (!loginPersonId) {
+        status.textContent = "Your login isn't linked to a person record yet - ask the admin to fix this before contributing."
+        return
+      }
+      submitBtn.disabled = true
+      status.textContent = file ? 'Uploading…' : ''
+      try {
+        const attachment_url = file ? await uploadFile(file, personId) : null
+        const entries = parseEntries()
+        entries.push({
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          text,
+          attachment_url,
+          contributor_person_id: loginPersonId,
+          credited: creditCheckbox.checked,
+          created_at: new Date().toISOString(),
+        })
+        person.data.notes_entries = JSON.stringify(entries)
+        save(f3EditTree.exportData())
+        textarea.value = ''
+        fileInput.value = ''
+        status.textContent = ''
+        renderList()
+      } catch (err) {
+        console.error(err)
+        status.textContent = err.message || 'Could not add this contribution'
+      } finally {
+        submitBtn.disabled = false
+      }
+    })
+
     form.querySelector('hr')?.before(fieldset)
   }
 
