@@ -51,7 +51,7 @@ async function sendAccessRequestEmail({ name, email, note }) {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      from: process.env.MAIL_FROM || 'Lunt Family Tree <noreply@lunt.au>',
+      from: process.env.MAIL_FROM || 'Tree Research <noreply@lunt.au>',
       to: process.env.MAIL_TO || 'rod@lunt.au',
       reply_to: email,
       subject: `Family tree access request from ${name}`,
