@@ -1,46 +1,38 @@
 # family-chart Session Handoff Baton
 
-2026-09-20 -- Issue clear-out: bug fix, uploads, modal editing session
+2026-09-20 -- Engineering grill + issue #25 shipped session
 
-**Branch:** master
+**Branch:** feat/issue-25-contribute-form
 
 **Last commits this session:**
-- 4f7003c Merge pull request #27 from rodlunt/feat/issue-8-modal-editing
-- b43a6c7 fix: multi-spouse child attribution and dropdown escaping in wizard
-- 8c36e5b feat: modal-based editing and relationship-first add-relative wizard
-- 3f7256f Merge pull request #26 from rodlunt/feat/issue-5-9-upload-endpoint
-- bd1b473 fix: close upload/attachment XSS gaps flagged by security review
-- d7045b9 feat: file upload endpoint, avatar picker, notes and attachments
-- 97a36c8 Merge pull request #24 from rodlunt/fix/issue-22-unconfirmed-anchor-vanishing
-- a5ee3ce fix: recurse show_unconnected into per-component nested layout
-- eb39715 Merge pull request #23 from rodlunt/chore/remove-cypress-dependabot-alerts
-- cc56404 chore: remove unused Cypress e2e suite
+- 7020370 feat(contribute): add "something to contribute" form for logged-in users
+- 2a0f74e chore(session-end): update handoff baton for 2026-09-20 session (previous session)
 
 ---
 
 ## What shipped this session
 
-- **Issue #22 fixed (the vanishing-tree bug).** Root cause found: `placeUnconnected`'s nested per-component `calculateTree()` call only walked blood ancestors/descendants plus direct spouses, so a component member reachable only via a spouse's own parent (e.g. an unconfirmed ancestor tied in through an in-law) could never be placed, which silently dropped the entire component when that unreachable person carried the anchor link. Fixed by letting the nested call recurse with its own `show_unconnected` pass. Verified with a synthetic fixture that genuinely failed pre-fix and passed post-fix.
-- **Issue #21 closed.** Removed the unused Cypress e2e devDependency (tested upstream's unchanged demo pages, wasn't wired into CI) -- cleared all 11 open Dependabot alerts at once. Filed a heads-up issue on upstream `donatso/family-chart` (#108) about the same Cypress-driven vulnerabilities, since it inherited the same devDependency.
-- **Issues #5 + #9 shipped together (file upload, avatar picker, notes, attachments).** New `POST /api/upload` / `GET /uploads/*` in `server/index.js`, new `file`/`file-list` field types in the core library, `EditTree.setUploadHandler()`. Two real security defects found and fixed before merge: the server was deriving the served `Content-Type` from the client-supplied filename extension rather than the validated content-type (stored-XSS risk, fixed by forcing the extension from the validated type allowlist); and stored avatar/attachment URLs were rendered into `href`/`src` without scheme validation (fixed with an `isSafeUrl` check at every sink).
-- **Issue #8 shipped (modal-based editing + relationship-first add-relative wizard).** Reused the library's existing `Modal` class (previously only used for the remove-relative confirmation) and `EditTree`'s already-swappable form-container abstraction, so this was less invasive than the issue's "real redesign" framing suggested. The old "5 ghost cards on the canvas" add-relative mechanism is replaced by an explicit two-step modal wizard (relationship type, then create-new-vs-link-existing). Found and fixed two defects before merge: the child-adding path silently misattributed a new child to `spouses[0]` when a person has more than one spouse (added a spouse-picker sub-step instead); and the wizard's dropdown (plus a pre-existing function it copied) interpolated person names into raw HTML unescaped (fixed with d3's safe `.text()`/`.attr()` API).
-- **New issue #25 filed**: an in-app "something to contribute" form (text + file, with a credited/anonymous choice) for the four existing logins, explicitly deferring any review/moderation-queue question to #11.
-- Backlog went from 8 open issues to 5 this session (#21, #22, #5, #9, #8 closed; #25 opened).
+- **Full build-order and design plan for the remaining backlog (#10, #11, #12, #13, #25).** Ran the `engineering-grill` skill against the live rules pack (17 domains, 11 triaged as active-now, 88 questions derived). Six irreversible-tier decisions confirmed with Rodney and a concrete implementation approach worked out for every issue. The full plan (context, confirmed decisions, repo grounding, per-issue approach, flagged assumptions, verification steps) is saved at `~/.claude/plans/imperative-wobbling-puppy.md` -- read that before starting #11, it has real detail this baton only summarises.
+- **Build order settled: #25 -> #11 (incl. minimal roles + #13's admin screen) -> #12 -> #10's data model, then #10's UI either side of #12.** This is a change from the previous baton's assumption that #11/#13/#10/#12 all wait on a single big #11 redesign -- #25 was pulled forward since it doesn't need #11 at all, and #12 was pulled closer to #11 (not deferred to "after #10 settles") because #11 introduces a concurrent-write risk on the flat JSON file that only #12 actually closes.
+- **Issue #25 shipped this session** ("something to contribute" form). New `datum.data.notes_entries` (JSON-encoded array, replacing the old single-string `notes` field), reusing the existing `/api/upload` endpoint, with a credited/anonymous choice. Anonymity is enforced (a real field respected everywhere, never a display-only toggle) not just described, and identity is never rendered in the UI for an anonymous entry to any of the four current logins (there's no admin/viewer role yet -- that's #11). A pre-existing legacy note is preserved read-only, not auto-migrated. Reviewed via `/code-review`: fixed a silent-misattribution bug (submission now refused, not silently unattributed, if the login can't be resolved to a person id) and tightened the anonymity hint copy. Tested end-to-end in a real browser against local fixture data (credited, anonymous, file-attachment, legacy-note-preservation, and the misattribution-guard paths), verified against the raw saved JSON each time, not just the screen. **PR open, not yet merged:** https://github.com/rodlunt/family-chart/pull/28
+- **Real decision locked in for #11: the unconfirmed Geoff/Bernard/Allan half-sibling branch (involving Andy and Tomas Lunt, two of Rodney's actual paying work customers) needs its own restricted-visibility scope, not the current "every login sees everything" default, before #11 widens who can log in.** This has to be built into #11's role/visibility model from day one (a `visibility_scope` concept separate from admin/contributor role), not retrofitted -- see the plan file for the concrete mechanism (a one-time, reviewable data migration tagging the affected people/edge into a restricted scope).
+- **Fixed a `gh` CLI trap the hard way.** `gh repo set-default` was stuck pointing at the upstream `donatso/family-chart` instead of the fork. Caught it first on read commands (`gh issue list`/`gh pr list` were silently returning upstream's issues), fixed the default, then hit the same trap again on a *mutating* command: `gh pr create` opened a real, live PR against `donatso/family-chart` before the fix carried over to write commands too. Closed that erroneous PR immediately with an apology comment, `gh repo set-default rodlunt/family-chart` is now set correctly for this checkout, and PR #28 (the correct one) is up.
 
 ---
 
 ## Open follow-ups
 
-1. **Issue #11 -- full passwordless magic-link login system + review workflow.** Still the biggest open design question: real auth, roles, a moderation queue, replacing the current "every login has equal direct write access" model. Issue #13 (admin panel) is blocked on this.
-2. **Issue #13 -- user management admin panel.** Blocked on #11's user model existing first.
-3. **Issue #10 -- per-person timeline (life events + artefacts).** Biggest of the remaining feature requests, needs its own design pass.
-4. **Issue #12 -- move off the flat JSON file to a real (vector-capable) database.** Explicitly sequenced after #9/#10 settle what the new tables need to hold; #9 shipped this session, so this may be less premature than before, but hasn't been revisited.
-5. **Issue #25 -- "something to contribute" form**, filed this session, not started. Depends on #5/#9's upload plumbing (already shipped), explicitly out of scope: any moderation gate (tracked in #11).
-6. **Uncommitted `.gitignore` change on disk right now** (adds `/outreach/`), still present, still not from this session's issue work -- it's Rodney's own in-progress LinkedIn outreach drafting in this same checkout. Left alone deliberately again this session; check with Rodney before touching it.
-7. Upstream `donatso/family-chart` issue #108 (Cypress vulnerability heads-up) is open on their repo, not ours -- nothing to do here, just noting it exists in case it comes up.
+1. **Issue #11 -- roles, magic-link login, review workflow.** Now has a concrete plan (see `~/.claude/plans/imperative-wobbling-puppy.md`), but five things need a quick sign-off from Rodney before coding starts: (a) does Caddy still gate access once the app has its own login, or does it become a plain reverse proxy; (b) reshape `/api/tree` onto resource routes as part of #11, or keep the blob contract longer; (c) Postgres+pgvector vs an embedded vector-capable store for #12 -- not yet decided; (d) #13's first cut: admin-reset only, defer self-service reset, or build both; (e) the exact proposal state list (`pending/approved/rejected/withdrawn/superseded`) is Claude's design, not Rodney's -- wants a read-through before coding.
+2. **Issue #13 -- admin panel.** No longer a separate phase -- lands inside/right after #11 as the UI over #11's new user/role table. See flagged assumption (d) above.
+3. **Issue #10 -- per-person timeline.** Data model designed (event shape, approximate-date handling) but not built. Needs to be locked in before #12's schema is cut. Also: the orphan-on-delete fix (never cascade-delete a person's notes/events/contributions -- decision made this session) needs implementing in the *current* flat-file delete/merge code path independent of #10's UI, since the ghost-record incident (see previous baton, issue history) shows this is live risk today, not a future one. Not started.
+4. **Issue #12 -- move off the flat JSON file to a real database.** Sequencing changed this session: now follows #11 closely (not deferred), because #11 introduces a concurrent-write risk on the flat file that Rodney accepted as an interim risk specifically on the condition that #12 closes it soon after, not later. Database choice (Postgres+pgvector vs an embedded option) still open -- see (c) above. Needs a verified dry-run migration with a field-by-field diff check, and a tested backup/restore procedure (Restic can't validly restore a live database) as a go-live gate, not a fast-follow.
+5. **Issue #25 PR #28 is open, not merged.** Test plan includes one unchecked item: a manual smoke test against the real tree.lunt.au data before merge.
+6. **Uncommitted `.gitignore` change on disk right now** (adds `/outreach/`), still present, still not from any issue work in this or the previous session -- it's Rodney's own in-progress LinkedIn outreach drafting in this same checkout. Left alone deliberately again this session; check with Rodney before touching it.
+7. Upstream `donatso/family-chart` issue #108 (Cypress vulnerability heads-up, filed last session) is open on their repo, not ours -- nothing to do here.
+8. 79 of the 88 engineering-grill questions were derived but never asked (offered for a deep-dive round, declined in favour of moving to the plan) -- not judged unimportant, just not put. Worth a look if #11 turns up a design question this baton doesn't cover; the full derived set isn't saved anywhere outside this session's transcript, so a fresh grill run would be needed to get them back.
 
 ---
 
 ## Suggested starting point
 
-Issue #11 (the login/invite/review-workflow redesign) is the natural next pickup -- it's the one remaining open issue that everything else (#13, and arguably how far #9's contribution features can go) is blocked behind, and it explicitly needs a dedicated design conversation with Rodney before any code, not a straight implementation session.
+Merge PR #28 (#25) once the real-data smoke test is done, then start #11 -- but resolve the five flagged assumptions in follow-up #1 with Rodney first (they're quick, mostly one-line calls, not a full design pass) since the plan in `~/.claude/plans/imperative-wobbling-puppy.md` is otherwise ready to implement against.
