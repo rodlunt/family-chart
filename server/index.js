@@ -11,12 +11,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))  // this file's o
 const PUBLIC_DIR = path.join(__dirname, 'public')  // static frontend files live here
 const DATA_FILE = process.env.DATA_FILE || '/data/tree.json'  // persisted tree data; /data is the mounted volume in production
 const PORT = process.env.PORT || 3000
-const AUTH_USER_PERSON_IDS = {
-  rodney: "rodney-lunt",
-  pauline: "pauline-leask",
-  georgia: "georgia-louise-brandi",
-  auntyv: "vivienne-lunt",
-}
+// Maps each basic_auth username to the id of their own record in the tree data, so "Focus on
+// me" knows who "me" is. Both sides of this mapping are real family members' names, so it's
+// runtime config, not code - this repo is public and carries none of it. See .env.example.
+const AUTH_USER_PERSON_IDS = JSON.parse(process.env.AUTH_USER_PERSON_IDS_JSON || '{}')
 
 // /request-access and /api/request-access are the only paths Caddy leaves outside
 // basic_auth (see the Caddyfile's @requestAccess matcher) - this is the ONE genuinely
