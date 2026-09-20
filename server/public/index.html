@@ -98,6 +98,34 @@
     .f3-form .f3-delete-btn { border-color: #c0524a; color: #c0524a; }
     .f3-delete-btn:hover { background-color: #c0524a; border-color: #c0524a; }
 
+    /* File / file-list fields (avatar photo, per-person attachments): same warm-panel
+       language as the rest of the form, no new visual pattern invented. */
+    .f3-file-field, .f3-filelist-field { margin: 8px 0; }
+    .f3-file-preview {
+      display: block; max-width: 100%; max-height: 140px; margin: 6px 0;
+      border: 1px solid var(--panel-line); border-radius: 2px; object-fit: cover;
+    }
+    .f3-file-current { margin: 6px 0; font-size: 13px; }
+    .f3-file-current a, .f3-info-field-value.f3-filelist-item { color: var(--line-unconfirmed); }
+    .f3-form input[type="file"] {
+      width: 100%; font-size: 12px; color: var(--text-dim); margin: 6px 0;
+    }
+    .f3-file-status { font-size: 12px; color: var(--text-dim); min-height: 15px; }
+    .f3-uploading .f3-file-status { color: var(--line-unconfirmed); }
+    .f3-filelist-items { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; }
+    .f3-filelist-item {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      padding: 4px 8px; background: var(--ink); border: 1px solid var(--panel-line); border-radius: 2px;
+      font-size: 13px;
+    }
+    .f3-filelist-item a { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .f3-filelist-remove {
+      background: transparent; border: none; color: var(--text-dim); cursor: pointer;
+      font-size: 15px; line-height: 1; padding: 0 2px; flex-shrink: 0;
+    }
+    .f3-filelist-remove:hover { color: #c0524a; }
+    .f3-info-field-value.f3-filelist-item { display: block; margin-bottom: 4px; }
+
     /* Semi-public app: attribution, licence and a way to reach an admin all need to be
        visible, not buried - this isn't decoration, it's what the MIT licence on the
        upstream library requires ("The above copyright notice and this permission notice
@@ -189,6 +217,36 @@ Promise.all([
   })
   .catch((err) => { console.error(err); setStatus('Failed to load tree', true) })
 
+// Supplied to f3EditTree.setUploadHandler() - the library has no knowledge of this endpoint,
+// it just calls this function with the selected File and the id of the person being edited,
+// and awaits a URL back. Base64-encoding client-side (rather than multipart) matches this
+// server's existing JSON-body style (see /api/request-access) and needs no extra parsing on
+// the server for a dependency-free http server that doesn't already have multipart support.
+async function uploadFile(file, personId) {
+  const dataBase64 = await fileToBase64(file)
+  const res = await fetch('/api/upload', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filename: file.name, contentType: file.type, dataBase64, personId }),
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(body.error || `Upload failed (${res.status})`)
+  return body.url
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result  // "data:<mime>;base64,<data>" - strip the data URL prefix, the server only wants the payload
+      const comma = result.indexOf(',')
+      resolve(comma >= 0 ? result.slice(comma + 1) : result)
+    }
+    reader.onerror = () => reject(reader.error || new Error('Could not read the selected file'))
+    reader.readAsDataURL(file)
+  })
+}
+
 function create(data) {
   const f3Chart = f3.createChart('#FamilyChart', data)
     .setTransitionTime(1000)
@@ -206,7 +264,13 @@ function create(data) {
     .setCardDisplay([displayName, ["birthday"]])
 
   const f3EditTree = f3Chart.editTree()
-    .setFields(["first name", "middle name", "last name", "common name", "birthday", "avatar"])
+    .setFields([
+      "first name", "middle name", "last name", "common name", "birthday",
+      { id: 'avatar', type: 'file', label: 'Photo', accept: 'image/*' },
+      { id: 'notes', type: 'textarea', label: 'Notes' },
+      { id: 'attachments', type: 'file-list', label: 'Files', accept: '*/*' },
+    ])
+    .setUploadHandler(uploadFile)
     .setEditFirst(true)  // clicking a card opens its edit form directly, rather than an info-only view first
     .setLinkExistingRelConfig({  // lets an "Add Father/Mother/Spouse/Son/Daughter" pick an existing person instead of only creating a new one
       linkRelLabel: (d) => displayName(d) || '(no name)',
