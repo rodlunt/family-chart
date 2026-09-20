@@ -88,13 +88,45 @@ export function runAddRelativeWizard({
     }
 
     function showChildSubStep() {
+      // Which spouse the new child's other parent is only needs asking when there's a genuine
+      // choice - a person with two-plus spouses (a real shape in this app's own data, e.g. a
+      // remarriage) needs to say which marriage the child belongs to, rather than the old
+      // silent "always the first spouse" behaviour this replaces.
+      const spouses = (datum.rels.spouses || [])
+        .map(id => store.getData().find(d => d.id === id))
+        .filter((d): d is Datum => !!d)
+      if (spouses.length > 1) {
+        showSpousePickerSubStep(spouses)
+      } else {
+        showGenderSubStep()
+      }
+    }
+
+    function showSpousePickerSubStep(spouses: Datum[]) {
+      const sub = d3.create('div').attr('class', 'f3-add-relative-wizard').html(`
+        <h3 class="f3-form-title">Whose child is this?</h3>
+        <div class="f3-wizard-options"></div>
+      `)
+      const sub_options = sub.select('.f3-wizard-options')
+      spouses.forEach(spouse => {
+        sub_options.append('button')
+          .attr('type', 'button')
+          .attr('class', 'f3-btn')
+          .text(spouseLabel(spouse))
+          .on('click', () => showGenderSubStep(spouse.id))
+      })
+      sub.append('button').attr('type', 'button').attr('class', 'f3-wizard-back').text('Back').on('click', showStep1)
+      showStep(sub.node()!)
+    }
+
+    function showGenderSubStep(otherParentId?: Datum['id']) {
       showSubStep('Add child', [
         {label: 'Son', class: 'f3-male-bg', rel_type: 'son' as AddRelativeType},
         {label: 'Daughter', class: 'f3-female-bg', rel_type: 'daughter' as AddRelativeType},
-      ])
+      ], otherParentId)
     }
 
-    function showSubStep(title: string, choices: {label: string, class: string, rel_type: AddRelativeType}[]) {
+    function showSubStep(title: string, choices: {label: string, class: string, rel_type: AddRelativeType}[], otherParentId?: Datum['id']) {
       const sub = d3.create('div').attr('class', 'f3-add-relative-wizard').html(`
         <h3 class="f3-form-title">${title}</h3>
         <div class="f3-wizard-options"></div>
@@ -105,15 +137,23 @@ export function runAddRelativeWizard({
           .attr('type', 'button')
           .attr('class', `f3-btn ${choice.class}`)
           .text(choice.label)
-          .on('click', () => resolveRelType(choice.rel_type))
+          .on('click', () => resolveRelType(choice.rel_type, otherParentId))
       })
       sub.append('button').attr('type', 'button').attr('class', 'f3-wizard-back').text('Back').on('click', showStep1)
       showStep(sub.node()!)
     }
   }
 
-  function resolveRelType(rel_type: AddRelativeType) {
-    const placeholder = createSingleRelPlaceholder(datum, store.getData(), rel_type, addRelLabels)
+  // Same "person's own name" data as getLinkExistingRelConfig().linkRelLabel formats for the
+  // link-existing dropdown, but usable even when that config is off - naming which marriage a
+  // new child belongs to needs a label regardless of whether linking-existing is enabled.
+  function spouseLabel(spouse: Datum) {
+    const name = [spouse.data['first name'], spouse.data['last name']].filter(Boolean).join(' ')
+    return name || 'Unnamed spouse'
+  }
+
+  function resolveRelType(rel_type: AddRelativeType, otherParentId?: Datum['id']) {
+    const placeholder = createSingleRelPlaceholder(datum, store.getData(), rel_type, addRelLabels, otherParentId)
     store.updateTree({})
     showStep2(placeholder)
   }
@@ -121,12 +161,18 @@ export function runAddRelativeWizard({
   function showStep2(placeholder: Datum) {
     const link_existing_rel_config = getLinkExistingRelConfig()
     const label = placeholder._new_rel_data?.label || 'Add relative'
+    // Person names/labels below come from user-entered data (a family member's own name, or
+    // an app-configured title/placeholder) - built via d3's .text()/.attr() rather than
+    // interpolated into .html() strings, since .text() safely sets a text node regardless of
+    // what characters the value contains, closing off the same class of stored-HTML-injection
+    // risk the upload feature's URL fields needed guarding against elsewhere in this app.
     const div = d3.create('div').attr('class', 'f3-add-relative-wizard').html(`
-      <h3 class="f3-form-title">${label}</h3>
+      <h3 class="f3-form-title"></h3>
       <div class="f3-wizard-options">
         <button type="button" class="f3-btn f3-wizard-create-new">Create a new person</button>
       </div>
     `)
+    div.select('.f3-form-title').text(label)
     div.select('.f3-wizard-create-new').on('click', () => resolve(() => onCreateNew(placeholder)))
 
     if (link_existing_rel_config) {
@@ -139,13 +185,16 @@ export function runAddRelativeWizard({
 
       const link_cont = div.append('div').attr('class', 'f3-link-existing-relative').html(`
         <hr>
-        <label>${link_existing_rel_config.title ?? 'Profile already exists?'}</label>
-        <select>
-          <option value="">${link_existing_rel_config.select_placeholder ?? 'Select profile'}</option>
-          ${options.map(option => `<option value="${option.value}">${option.label}</option>`).join('')}
-        </select>
+        <label></label>
+        <select><option value=""></option></select>
       `)
-      link_cont.select('select').on('change', (event: Event) => {
+      link_cont.select('label').text(link_existing_rel_config.title ?? 'Profile already exists?')
+      const select = link_cont.select('select')
+      select.select('option').text(link_existing_rel_config.select_placeholder ?? 'Select profile')
+      options.forEach(option => {
+        select.append('option').attr('value', option.value).text(option.label)
+      })
+      select.on('change', (event: Event) => {
         const link_rel_id = (event.target as HTMLSelectElement).value
         if (!link_rel_id) return
         resolve(() => onLinkExisting(placeholder, link_rel_id))

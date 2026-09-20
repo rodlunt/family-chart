@@ -70,25 +70,29 @@ export function getAddRelativeAvailability(datum: Datum, store_data: Data, canAd
  * pipeline (`getLinkRelOptions`, `handleLinkRel`, the new-rel edit form, cleanup on cancel)
  * depends on that shape, not on how many placeholders were created at once.
  *
- * For 'son'/'daughter', the child needs a second parent: the datum's first existing spouse if
- * it has one, otherwise a fresh spouse placeholder is created silently first (mirroring the
- * old flow, where a generic "Add Spouse" ghost was always created before any child ghosts).
- * If `datum` already has more than one spouse, the new child is attached to the first one -
- * a deliberate simplification for this PR (see PR description) rather than adding a spouse
- * picker sub-step that nothing in the design brief asked for.
+ * For 'son'/'daughter', the child needs a second parent. `otherParentId`, when given, is used
+ * directly - the wizard passes this when `datum` has more than one spouse and the person
+ * running the wizard picked which marriage the child belongs to (see the spouse-picker
+ * sub-step in `add-relative-wizard.ts`; the old all-5-ghosts flow offered one "Add Son"/"Add
+ * Daughter" ghost per spouse for exactly this reason, so this isn't new behaviour, just
+ * reached via an explicit step instead of separate ghosts). Without `otherParentId`, falls
+ * back to the datum's only spouse if it has exactly one, or creates a fresh spouse placeholder
+ * silently if it has none (mirroring the old flow's generic "Add Spouse" ghost that always
+ * preceded any child ghost).
  */
 export function createSingleRelPlaceholder(
   datum: Datum,
   store_data: Data,
   rel_type: AddRelativeType,
-  addRelLabels: AddRelative['addRelLabels']
+  addRelLabels: AddRelative['addRelLabels'],
+  otherParentId?: Datum['id']
 ): NewDatum {
   if (!datum.rels.spouses) datum.rels.spouses = []
   if (!datum.rels.children) datum.rels.children = []
 
   if (rel_type === 'father' || rel_type === 'mother') return addParent(rel_type)
   if (rel_type === 'spouse') return addSpouse()
-  return addChild(rel_type)
+  return addChild(rel_type, otherParentId)
 
   function addParent(which: 'father' | 'mother') {
     const gender = which === 'father' ? 'M' : 'F'
@@ -124,8 +128,8 @@ export function createSingleRelPlaceholder(
     return spouse
   }
 
-  function addChild(which: 'son' | 'daughter') {
-    const existing_spouse_id = datum.rels.spouses![0]
+  function addChild(which: 'son' | 'daughter', otherParentId?: Datum['id']) {
+    const existing_spouse_id = otherParentId || datum.rels.spouses![0]
     const spouse = (existing_spouse_id && store_data.find(d => d.id === existing_spouse_id)) || addSpouse()
     if (!spouse.rels.children) spouse.rels.children = []
 
