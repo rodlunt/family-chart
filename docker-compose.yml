@@ -8,6 +8,9 @@ services:
     restart: unless-stopped
     environment:
       DATA_FILE: /data/tree.json
+    env_file:
+      - path: .env  # RESEND_API_KEY etc for the request-access form - see .env.example. Not committed (public repo).
+        required: false
     volumes:
       # named volume, not a bind mount: the tree data is the one thing here that
       # must survive an image rebuild, and this keeps it out of the git checkout
