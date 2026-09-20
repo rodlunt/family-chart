@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question about installing or running this
+    url: https://github.com/rodlunt/family-chart/discussions/categories/q-a
+    about: Ask in Q&A Discussions rather than filing an issue.
+  - name: Idea or something you'd like changed
+    url: https://github.com/rodlunt/family-chart/discussions/categories/ideas
+    about: Open-ended ideas that aren't yet a concrete bug or feature request.
+  - name: Security problem
+    url: https://github.com/rodlunt/family-chart/security/advisories/new
+    about: Never report security issues publicly. This opens a private advisory only the maintainer can see; see SECURITY.md.

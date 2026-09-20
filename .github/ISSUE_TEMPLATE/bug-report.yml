@@ -1,0 +1,41 @@
+name: Bug report
+description: Something the library, server, or hosted app did wrong.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did it do, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce it
+      description: Steps to reproduce, as exact as you can manage. Sample data (never real personal data) helps a lot.
+    validations:
+      required: true
+  - type: input
+    id: where
+    attributes:
+      label: Where this happened
+      description: Browser/OS, or "self-hosted server" plus how you're running it (Docker, node directly).
+      placeholder: Chrome 128 on Linux
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: What would need to be true for this to count as fixed? Two or three concrete, checkable statements.
+      placeholder: |
+        - Clicking a card in full-tree mode always re-fits the view around the new selection
+        - No card is left with a stale "main" state after switching focus
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Console errors, screenshots, whatever seems relevant.

@@ -1,6 +1,7 @@
 {
   "name": "family-chart",
   "version": "0.9.0",
+  "private": true,
   "type": "module",
   "description": "family tree creator and viewer",
   "keywords": [

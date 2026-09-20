@@ -1,0 +1,28 @@
+name: Feature request
+description: Something you'd like this to do that it doesn't yet.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's the problem or gap
+      description: What are you trying to do that's currently hard or impossible?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What you'd like to see, if you have something specific in mind. Rough is fine.
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Two or three concrete, testable statements that would mean this is done.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any other approaches, workarounds, or existing options you've already tried or ruled out.
