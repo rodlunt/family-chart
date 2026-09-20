@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+  <title>Request access - Lunt Family Tree</title>
+  <style>
+    :root {
+      --ink: #16130f;
+      --panel: #221d17;
+      --panel-line: rgba(242,237,228,.14);
+      --text: #f2ede4;
+      --text-dim: rgba(242,237,228,.55);
+      --line-unconfirmed: #b8823a;
+      --font-display: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, 'Times New Roman', serif;
+      --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    }
+    body {
+      margin: 0; min-height: 100vh; background: var(--ink); color: var(--text);
+      font-family: var(--font-body); display: flex; align-items: center; justify-content: center;
+      padding: 24px; box-sizing: border-box;
+    }
+    .card {
+      width: 100%; max-width: 420px; background: var(--panel); border: 1px solid var(--panel-line);
+      border-radius: 4px; padding: 32px; box-sizing: border-box;
+    }
+    h1 { font-family: var(--font-display); font-size: 22px; margin: 0 0 8px; font-weight: normal; }
+    p.lede { color: var(--text-dim); font-size: 14px; margin: 0 0 24px; line-height: 1.5; }
+    label { display: block; font-size: 13px; font-weight: bold; margin: 16px 0 6px; }
+    input, textarea {
+      width: 100%; box-sizing: border-box; background: var(--ink); border: 1px solid var(--panel-line);
+      border-radius: 2px; color: var(--text); font-family: var(--font-body); font-size: 14px;
+      padding: 8px 10px;
+    }
+    input:focus, textarea:focus {
+      outline: none; border-color: var(--line-unconfirmed); box-shadow: 0 0 0 2px rgba(184,130,58,.35);
+    }
+    textarea { resize: vertical; min-height: 70px; }
+    button {
+      margin-top: 22px; width: 100%; padding: 10px; border: none; border-radius: 2px;
+      background: #5f7a52; color: var(--text); font-family: var(--font-body); font-size: 14px;
+      cursor: pointer;
+    }
+    button:disabled { opacity: .6; cursor: default; }
+    #status { margin-top: 14px; font-size: 13px; min-height: 18px; }
+    #status.error { color: #d98c7f; }
+    #status.ok { color: #9fc08a; }
+    footer { margin-top: 20px; font-size: 12px; color: var(--text-dim); text-align: center; }
+    footer a { color: inherit; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>This tree is invite-only</h1>
+    <p class="lede">Tell Rodney who you are and he'll set you up with a login. No account is created here, this just sends him an email.</p>
+    <form id="form">
+      <label for="name">Name</label>
+      <input id="name" name="name" type="text" maxlength="200" required autocomplete="name">
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" maxlength="200" required autocomplete="email">
+      <label for="note">How are you connected to the family? (optional)</label>
+      <textarea id="note" name="note" maxlength="1000"></textarea>
+      <button type="submit" id="submitBtn">Request access</button>
+      <div id="status"></div>
+    </form>
+    <footer><a href="mailto:rod@lunt.au">rod@lunt.au</a></footer>
+  </div>
+  <script>
+    const form = document.getElementById('form')
+    const status = document.getElementById('status')
+    const submitBtn = document.getElementById('submitBtn')
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault()
+      submitBtn.disabled = true
+      status.textContent = 'Sending...'
+      status.className = ''
+      try {
+        const res = await fetch('/api/request-access', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: document.getElementById('name').value,
+            email: document.getElementById('email').value,
+            note: document.getElementById('note').value,
+          }),
+        })
+        const result = await res.json()
+        if (!res.ok) throw new Error(result.error || 'Something went wrong')
+        status.textContent = "Sent. Rodney will be in touch once he's set you up."
+        status.className = 'ok'
+        form.reset()
+      } catch (err) {
+        status.textContent = err.message
+        status.className = 'error'
+        submitBtn.disabled = false
+      }
+    })
+  </script>
+</body>
+</html>
