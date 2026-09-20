@@ -62,6 +62,7 @@ export class EditTree {
   postSubmit: ((datum: Datum, data: Data) => void) | null
   link_existing_rel_config?: FormCreatorSetupProps['link_existing_rel_config']
   onFormCreation: null | ((props: {cont: HTMLElement, form_creator: FormCreator}) => void)
+  upload_handler: FormCreatorSetupProps['uploadFile'] | null
 
   addRelativeInstance: AddRelative
   removeRelativeInstance: RemoveRelative
@@ -98,7 +99,9 @@ export class EditTree {
     this.postSubmit = null
     
     this.onFormCreation = null
-    
+
+    this.upload_handler = null
+
     this.createFormEdit = null
     this.createFormNew = null
   
@@ -279,6 +282,7 @@ export class EditTree {
       onDelete: this.onDelete,
       canEdit: this.canEdit,
       canDelete: this.canDelete,
+      uploadFile: this.upload_handler || undefined,
       ...props
     })
   
@@ -397,10 +401,24 @@ export class EditTree {
       }
     }
     this.fields = new_fields
-  
+
     return this
   }
-  
+
+  /**
+   * Set the upload handler used by `file` and `file-list` fields. The library has no
+   * knowledge of any particular upload endpoint - the app supplies a function that takes the
+   * selected File and the id of the person being edited, does the actual upload (however it
+   * likes: fetch, base64-encoding, multipart, a third-party host), and resolves to the URL
+   * the uploaded file is now reachable at.
+   * @param fn - (file, personId) => Promise<url>
+   */
+  setUploadHandler(fn: EditTree['upload_handler']) {
+    this.upload_handler = fn
+
+    return this
+  }
+
   /**
    * Set the onChange function to be called when the data changes via editing, adding, or removing a relative
    * @param fn - The onChange function

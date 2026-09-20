@@ -8,7 +8,9 @@ import {
   RelReferenceFieldCreator,
   SelectFieldCreator,
   RelReferenceField,
-  SelectField
+  SelectField,
+  FileField,
+  FileListField
 } from "../types/form"
 
 
@@ -29,6 +31,7 @@ export function formCreatorSetup({
   onDelete,
   canEdit,
   canDelete,
+  uploadFile,
 }: FormCreatorSetupProps) {
   let can_delete = canDelete ? canDelete(datum) : true
   const can_edit = canEdit ? canEdit(datum) : true
@@ -45,6 +48,7 @@ export function formCreatorSetup({
     onFormCreation: onFormCreation,
     no_edit: no_edit,
     gender_field: getGenderField(),
+    uploadFile: uploadFile,
   }
 
   // Existing datum form creator
@@ -84,6 +88,7 @@ export function formCreatorSetup({
   fields.forEach(field => {
     if (field.type === 'rel_reference') addRelReferenceField(field)
     else if (field.type === 'select') addSelectField(field)
+    else if (field.type === 'file' || field.type === 'file-list') addFileField(field)
 
     else form_creator.fields.push({
       id: field.id,
@@ -126,6 +131,16 @@ export function formCreatorSetup({
         form_creator.fields.push(rel_reference_field)
       })
     }
+  }
+
+  function addFileField(field: FileField | FileListField) {
+    form_creator.fields.push({
+      id: field.id,
+      type: field.type,
+      label: field.label,
+      initial_value: datum.data[field.id],
+      accept: field.accept,
+    })
   }
 
   function addSelectField(field: SelectFieldCreator) {

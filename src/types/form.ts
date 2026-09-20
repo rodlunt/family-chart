@@ -19,6 +19,7 @@ export interface FormCreatorSetupProps {
   addRelative?: AddRelative
   removeRelative?: RemoveRelative
   deletePerson?: () => void
+  uploadFile?: (file: File, personId: string) => Promise<string>
   onSubmit?: (e: Event, datum: Datum, applyChanges: () => void, postSubmit: () => void) => void
   onDelete?: (datum: Datum, deletePerson: () => void, postSubmit: (props: any) => void) => void
   canEdit?: (datum: Datum) => boolean
@@ -32,6 +33,7 @@ export interface BaseFormCreator {
   onCancel: () => void;
   onFormCreation: FormCreatorSetupProps['onFormCreation']
   no_edit: boolean;
+  uploadFile?: FormCreatorSetupProps['uploadFile']
   gender_field: {
     id: 'gender';
     type: 'switch';
@@ -97,4 +99,19 @@ export interface SelectFieldCreator {
   placeholder?: string;
   options?: {value: string; label: string}[];
   optionCreator?: (datum: Datum) => {value: string; label: string}[];
+}
+
+/** A single-file picker field (e.g. an avatar photo). `initial_value` is the currently
+ *  stored URL, if any. Uploading a new file replaces it. */
+export interface FileField extends Field {
+  type: 'file';
+  accept?: string;
+}
+
+/** A multi-file picker field (e.g. per-person attachments). `initial_value` is a
+ *  JSON-encoded string of `{url, name}[]`, kept as a flat string like every other
+ *  `datum.data` value so no schema change is needed elsewhere (export, print, /api/tree). */
+export interface FileListField extends Field {
+  type: 'file-list';
+  accept?: string;
 }

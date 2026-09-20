@@ -1,5 +1,34 @@
-import { EditDatumFormCreator, NewRelFormCreator, SelectField } from '../types/form'
+import { EditDatumFormCreator, NewRelFormCreator, SelectField, FileField, FileListField } from '../types/form'
 import * as icons from './icons'
+
+// Basic HTML-attribute escaping so a quote in a filename or JSON payload can't break out of
+// the attribute it's placed in. The rest of this file's field renderers don't escape their
+// values (pre-existing, out of scope here) - this is only for the new file-list field's JSON
+// blob, which is the one new value here actually likely to contain a `"`.
+function escapeAttr(str: string) {
+  return String(str).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
+}
+
+// svg deliberately excluded: an inline SVG can carry a <script>, executed if ever opened by
+// direct navigation rather than loaded as an <img> (where a stored value might also end up, via
+// the file-list "Current file" link below).
+function looksLikeImageUrl(url: string) {
+  return /\.(jpe?g|png|gif|webp)(\?.*)?$/i.test(url)
+}
+
+// A stored field value (avatar/attachment URL) reaches an href or img src below. Restrict it to
+// same-origin relative paths (what our own upload endpoint returns) or http(s) absolute URLs
+// (a pasted external link) - never a javascript:/data:/vbscript: etc. scheme, which would
+// otherwise execute in whichever family member's browser later clicks the link or renders the
+// image tag.
+function isSafeUrl(url: string) {
+  if (url.startsWith('/')) return true
+  try {
+    return ['http:', 'https:'].includes(new URL(url).protocol)
+  } catch {
+    return false
+  }
+}
 
 
 export function getHtmlNew(form_creator: NewRelFormCreator) {
@@ -139,10 +168,35 @@ function fields(form_creator: EditDatumFormCreator | NewRelFormCreator) {
       fields_html += `
       <div class="f3-form-field">
         <label>${field.label} - <i>${field.rel_label}</i></label>
-        <input type="text" 
-          name="${field.id}" 
+        <input type="text"
+          name="${field.id}"
           value="${field.initial_value || ''}"
           placeholder="${field.label}">
+      </div>`
+    } else if (field.type === 'file') {
+      const file_field = field as FileField
+      const value = file_field.initial_value || ''
+      fields_html += `
+      <div class="f3-form-field f3-file-field">
+        <label>${field.label}</label>
+        ${value && isSafeUrl(value)
+          ? (looksLikeImageUrl(value)
+            ? `<img class="f3-file-preview" src="${escapeAttr(value)}" alt="${field.label}">`
+            : `<div class="f3-file-current"><a href="${escapeAttr(value)}" target="_blank" rel="noopener">Current file</a></div>`)
+          : ''}
+        <input type="file" class="f3-file-input" accept="${file_field.accept || 'image/*'}">
+        <input type="hidden" name="${field.id}" value="${escapeAttr(value)}">
+        <div class="f3-file-status"></div>
+      </div>`
+    } else if (field.type === 'file-list') {
+      const file_list_field = field as FileListField
+      fields_html += `
+      <div class="f3-form-field f3-filelist-field">
+        <label>${field.label}</label>
+        <div class="f3-filelist-items"></div>
+        <input type="file" class="f3-file-input f3-filelist-input" accept="${file_list_field.accept || '*/*'}">
+        <input type="hidden" name="${field.id}" value="${escapeAttr(file_list_field.initial_value || '')}">
+        <div class="f3-file-status"></div>
       </div>`
     }
   })
@@ -165,6 +219,26 @@ function fields(form_creator: EditDatumFormCreator | NewRelFormCreator) {
         <div class="f3-info-field">
           <span class="f3-info-field-label">${select_field.label}</span>
           <span class="f3-info-field-value">${select_field.options.find(option => option.value === select_field.initial_value)?.label || ''}</span>
+        </div>`
+      } else if (field.type === 'file') {
+        const value = field.initial_value
+        if (!value || !isSafeUrl(value)) return
+        fields_html += `
+        <div class="f3-info-field">
+          <span class="f3-info-field-label">${field.label}</span>
+          ${looksLikeImageUrl(value)
+            ? `<img class="f3-file-preview" src="${escapeAttr(value)}" alt="${field.label}">`
+            : `<a class="f3-info-field-value" href="${escapeAttr(value)}" target="_blank" rel="noopener">Current file</a>`}
+        </div>`
+      } else if (field.type === 'file-list') {
+        let items: {url: string, name: string}[] = []
+        try { items = field.initial_value ? JSON.parse(field.initial_value) : [] } catch { items = [] }
+        items = items.filter(item => isSafeUrl(item.url))
+        if (!items.length) return
+        fields_html += `
+        <div class="f3-info-field">
+          <span class="f3-info-field-label">${field.label}</span>
+          ${items.map(item => `<a class="f3-info-field-value f3-filelist-item" href="${escapeAttr(item.url)}" target="_blank" rel="noopener">${escapeAttr(item.name || item.url)}</a>`).join('')}
         </div>`
       } else {
         fields_html += `
