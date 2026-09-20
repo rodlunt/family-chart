@@ -74,10 +74,8 @@ pnpm docs     # generate API docs with typedoc
 
 Only `pnpm` is used here.
 
-An end-to-end Cypress suite lives under `cypress/e2e/`, inherited from upstream and covering the
-example pages (`pnpm test` to open it interactively, `pnpm test-run` headless) - it needs the
-Cypress binary installed (`pnpm exec cypress install`) and the `pnpm dev` server running first.
-It isn't currently wired into CI (see `.github/workflows/ci.yml`'s comment for why).
+CI is build-only (see `.github/workflows/ci.yml`) - `pnpm build` is the real gate on every push
+and PR.
 
 ## Documentation
 
