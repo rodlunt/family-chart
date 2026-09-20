@@ -16,13 +16,11 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    # Build-only, deliberately: the repo also carries a Cypress e2e suite
-    # (cypress/e2e/) inherited from upstream, covering the examples/ demo
-    # pages via a vite dev server. Wiring that into CI needs a running dev
-    # server plus the ~150MB Cypress binary, and it tests upstream's largely
-    # unchanged demo pages rather than what this fork actually changed
-    # (server, layout fixes, design pass). A build that actually compiles is
-    # a real, honest gate on its own; not pretending the e2e suite runs here.
+    # Build-only, deliberately: a build that actually compiles is a real,
+    # honest gate on its own. The Cypress e2e suite inherited from upstream
+    # was removed (see #21) - it wasn't wired into CI, tested upstream's
+    # unchanged demo pages rather than this fork's own changes, and its
+    # transitive deps were the source of every open Dependabot alert.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
